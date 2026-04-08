@@ -14,6 +14,8 @@ services:
       STREAMFUSE_UVICORN_WORKERS: ${STREAMFUSE_UVICORN_WORKERS:-2}
     ports:
       - "8000:8000"
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/frontend/public/favicon.svg"
     volumes:
       - streamfuse_data:/data
     restart: unless-stopped
@@ -34,6 +36,8 @@ services:
       target: prod
     ports:
       - "8080:80"
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/frontend/public/favicon.svg"
     depends_on:
       backend:
         condition: service_healthy
