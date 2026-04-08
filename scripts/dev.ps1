@@ -1,0 +1,1 @@
+./scripts/bootstrap-dev.ps1

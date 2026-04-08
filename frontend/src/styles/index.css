@@ -1,0 +1,36 @@
+﻿@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: 7 12 24;
+  --color-fg: 224 232 255;
+  --color-fg-muted: 149 166 201;
+  --color-card: 16 23 40;
+  --color-sidebar: 10 17 30;
+  --color-topbar: 11 18 32;
+  --color-primary: 34 211 238;
+  --color-accent: 74 222 128;
+  --gradient-app: radial-gradient(circle at 4% -2%, rgba(34, 211, 238, 0.25), transparent 36%),
+    radial-gradient(circle at 82% 4%, rgba(74, 222, 128, 0.18), transparent 30%),
+    linear-gradient(180deg, #050a14 0%, #070c18 36%, #060a13 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Plus Jakarta Sans", "Manrope", ui-sans-serif, sans-serif;
+  color: rgb(var(--color-fg));
+  background: var(--gradient-app);
+}

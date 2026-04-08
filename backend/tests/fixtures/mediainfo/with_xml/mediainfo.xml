@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaInfo xmlns="https://mediaarea.net/mediainfo">
+  <media ref="Episode.S01E01.mkv">
+    <track type="General">
+      <Title>Pilot Episode</Title>
+      <Duration>3492.960</Duration>
+      <OverallBitRate>7682012</OverallBitRate>
+    </track>
+    <track type="Video">
+      <Format>HEVC</Format>
+      <BitRate>6249140</BitRate>
+      <Width>1920</Width>
+      <Height>960</Height>
+      <FrameRate>23.976</FrameRate>
+    </track>
+    <track type="Audio">
+      <Format>E-AC-3</Format>
+      <Channels>6</Channels>
+      <Default>Yes</Default>
+    </track>
+    <track type="Audio">
+      <Format>AAC</Format>
+      <Channels>2</Channels>
+      <Default>No</Default>
+    </track>
+  </media>
+</MediaInfo>

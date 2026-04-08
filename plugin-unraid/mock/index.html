@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamFuse Unraid Mock Tile</title>
+    <link rel="stylesheet" href="./mock.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="header">
+        <h1>StreamFuse</h1>
+        <p>Unraid Tile Mock</p>
+      </header>
+
+      <section class="totals" id="totals">
+        <div class="kpi">
+          <span>Active Sessions</span>
+          <strong id="kpi-total">-</strong>
+        </div>
+        <div class="kpi">
+          <span>Tautulli</span>
+          <strong id="kpi-tautulli">-</strong>
+        </div>
+        <div class="kpi">
+          <span>SFTPGo</span>
+          <strong id="kpi-sftpgo">-</strong>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Active Sessions</h2>
+          <button id="btn-refresh" type="button">Refresh</button>
+        </div>
+        <p id="status" class="status">Loading...</p>
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Title</th>
+              <th>Source</th>
+              <th>Speed</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script src="./mock.js" defer></script>
+  </body>
+</html>

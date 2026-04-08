@@ -1,0 +1,33 @@
+﻿import { MediaType, SessionStatus, StreamSource } from "@/types/domain";
+
+export type UnifiedSession = {
+  id: number;
+  source: StreamSource;
+  source_session_id: string;
+  status: SessionStatus;
+  user_name: string;
+  ip_address: string | null;
+  title: string | null;
+  title_clean: string | null;
+  media_type: MediaType;
+  series_title: string | null;
+  season_number: number | null;
+  episode_number: number | null;
+  file_path: string | null;
+  file_name: string | null;
+  poster_path: string | null;
+  bandwidth_bps: number | null;
+  bandwidth_human: string | null;
+  started_at: string;
+  ended_at: string | null;
+  updated_at: string;
+  progress_percent: number | null;
+  duration_ms: number | null;
+  client_name: string | null;
+  player_name: string | null;
+  transcode_decision: string | null;
+  resolution: string | null;
+  video_codec: string | null;
+  audio_codec: string | null;
+  raw_payload: Record<string, unknown> | null;
+};

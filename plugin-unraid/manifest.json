@@ -1,0 +1,9 @@
+{
+  "id": "streamfuse-unraid-widget",
+  "name": "StreamFuse Dashboard Widget",
+  "version": "0.3.0",
+  "description": "Compact Unraid dashboard integration for active StreamFuse sessions.",
+  "entrypoint": "widget/index.html",
+  "config": "config/config.example.json",
+  "install_notes": "INSTALL_NOTES.md"
+}

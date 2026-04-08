@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamFuse Unraid Widget</title>
+    <link rel="stylesheet" href="./widget.css" />
+  </head>
+  <body>
+    <article class="sf-widget" id="widget-root">
+      <header class="sf-header">
+        <div>
+          <h1>StreamFuse</h1>
+          <p id="sf-summary-text">Loading sessions...</p>
+        </div>
+        <a id="sf-open-app" href="#" target="_blank" rel="noreferrer">Open App</a>
+      </header>
+
+      <section class="sf-kpis">
+        <div class="sf-kpi"><span>Active</span><strong id="kpi-active">-</strong></div>
+        <div class="sf-kpi"><span>Tautulli</span><strong id="kpi-tautulli">-</strong></div>
+        <div class="sf-kpi"><span>SFTPGo</span><strong id="kpi-sftpgo">-</strong></div>
+        <div class="sf-kpi"><span>Bandwidth</span><strong id="kpi-bandwidth">-</strong></div>
+      </section>
+
+      <section class="sf-state" id="state-loading">
+        <div class="sf-skeleton-row"></div>
+        <div class="sf-skeleton-row"></div>
+        <div class="sf-skeleton-row"></div>
+      </section>
+
+      <section class="sf-state sf-hidden" id="state-error">
+        <p>Cannot reach StreamFuse</p>
+        <button id="btn-retry" type="button">Retry</button>
+      </section>
+
+      <section class="sf-state sf-hidden" id="state-empty">
+        <p>No active streams</p>
+      </section>
+
+      <section class="sf-list sf-hidden" id="state-list">
+        <ul id="sessions-list"></ul>
+        <p id="more-count" class="sf-more sf-hidden"></p>
+      </section>
+    </article>
+
+    <script src="./widget.js" defer></script>
+  </body>
+</html>
