@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -72,6 +72,12 @@ class PosterResolver:
             if self._is_valid_image(candidate):
                 return candidate
 
+        if variant == "fanart":
+            fanart_like = self._find_by_stem(directory, ("fanart", "backdrop", "background"))
+            if fanart_like is not None:
+                return fanart_like
+            return self.placeholder
+
         for candidate in sorted(directory.iterdir(), key=lambda p: p.name.lower()):
             if self._is_valid_image(candidate):
                 return candidate
@@ -88,6 +94,11 @@ class PosterResolver:
             candidate = series_root / name
             if self._is_valid_image(candidate):
                 return candidate
+
+        if variant == "fanart":
+            fanart_like = self._find_by_stem(series_root, ("fanart", "backdrop", "background"))
+            if fanart_like is not None:
+                return fanart_like
 
         return self.placeholder
 
@@ -122,6 +133,15 @@ class PosterResolver:
     @staticmethod
     def _is_valid_image(path: Path) -> bool:
         return path.is_file() and path.suffix.lower() in _IMAGE_EXTENSIONS
+
+    def _find_by_stem(self, directory: Path, stems: tuple[str, ...]) -> Path | None:
+        stem_set = {stem.lower() for stem in stems}
+        for candidate in sorted(directory.iterdir(), key=lambda p: p.name.lower()):
+            if not self._is_valid_image(candidate):
+                continue
+            if candidate.stem.lower() in stem_set:
+                return candidate
+        return None
 
     @staticmethod
     def _normalize_media_type(media_type: MediaType | str | None, media_file: Path) -> MediaType:

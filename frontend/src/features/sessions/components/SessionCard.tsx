@@ -1,4 +1,4 @@
-﻿import { getBackendBase } from "@/shared/api/client";
+import { getBackendBase } from "@/shared/api/client";
 import { formatLocalTime } from "@/shared/lib/date";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { UnifiedSession } from "@/types/session";
@@ -90,21 +90,22 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
         }
       }}
     >
-      <div className="relative h-[210px]">
-        <div
-          className="absolute inset-0 bg-no-repeat bg-contain bg-center opacity-55"
-          style={{ backgroundImage: `url(${fanartSrc})` }}
+      <div className="relative h-[180px]">
+        <img
+          src={fanartSrc}
+          alt=""
           aria-hidden
+          className="absolute inset-0 h-full w-full object-contain opacity-65 blur-[2px]"
         />
-        <div className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1.5px]" aria-hidden />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/88 via-slate-900/42 to-slate-900/62" aria-hidden />
+        <div className="absolute inset-0 bg-slate-950/30" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/92 via-slate-900/52 to-slate-900/68" aria-hidden />
 
         <div className="relative flex h-full gap-3 p-3">
-          <div className="flex h-full w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-black/35 shadow-lg">
+          <div className="h-full aspect-[2/3] shrink-0 overflow-hidden rounded-lg border border-white/20 bg-black/35 shadow-lg">
             <img
               src={posterSrc}
               alt={session.title || "Poster"}
-              className="h-full w-full object-contain"
+              className="h-full w-full object-cover"
               onError={(event) => {
                 event.currentTarget.src = FALLBACK_POSTER;
               }}
@@ -153,5 +154,3 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     </article>
   );
 }
-
-

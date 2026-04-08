@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -13,6 +14,8 @@ from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
+
+_DL_PATH_PATTERN = re.compile(r'dl:\s*"(?P<path>[^"]+)"', re.IGNORECASE)
 
 
 class SFTPGoSyncService:
@@ -33,25 +36,31 @@ class SFTPGoSyncService:
         active_connections = await self.client.fetch_active_connections()
         logs = await self.client.fetch_transfer_logs(limit=log_limit)
 
-        log_index = self._index_logs(logs)
+        download_logs = [log for log in logs if self._is_download_log(log)]
+        log_index = self._index_logs(download_logs)
+        grouped_connections = self._group_download_connections(active_connections, log_index)
+
         seen_ids: set[str] = set()
         imported = 0
         errors = 0
 
-        for connection in active_connections:
+        for group in grouped_connections:
             try:
-                source_session_id = self._resolve_session_id(connection)
+                source_session_id = group["source_session_id"]
                 if not source_session_id:
                     errors += 1
                     continue
 
                 seen_ids.add(source_session_id)
-                related_logs = self._correlate_logs(connection, log_index)
-                bandwidth_bps = self._estimate_bandwidth_bps(source_session_id, connection, related_logs)
+                connection = group["connection"]
+                related_logs = group["logs"]
+                media_path = self._normalize_media_path_for_local_fs(group["file_path"])
+                if not media_path:
+                    continue
 
-                media_path = self._resolve_file_path(connection, related_logs)
+                bandwidth_bps = self._estimate_bandwidth_bps(source_session_id, connection, related_logs)
                 media_info = parse_mediainfo_for_media(media_path)
-                poster = self.poster_resolver.resolve(media_path, None) if media_path else self.poster_resolver.placeholder
+                poster = self.poster_resolver.resolve(media_path, None)
 
                 payload = build_sftpgo_session_payload(
                     source_session_id=source_session_id,
@@ -76,6 +85,51 @@ class SFTPGoSyncService:
             "errors": errors,
             "total_processed": imported + stale_marked,
         }
+
+    def _group_download_connections(
+        self,
+        active_connections: list[dict[str, Any]],
+        log_index: dict[str, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        grouped: dict[str, dict[str, Any]] = {}
+
+        for connection in active_connections:
+            related_logs = self._correlate_logs(connection, log_index)
+            if not self._looks_like_download(connection, related_logs):
+                continue
+
+            media_path = self._resolve_file_path(connection, related_logs)
+            if not media_path:
+                continue
+
+            username = str(connection.get("username") or _best_log_field(related_logs, "username") or "unknown")
+            ip_value = str(
+                connection.get("ip_address")
+                or connection.get("remote_address")
+                or _best_log_field(related_logs, "ip_address")
+                or _best_log_field(related_logs, "remote_addr")
+                or ""
+            )
+            normalized_ip = self._normalize_ip(ip_value)
+            key = self._group_key(username, normalized_ip, media_path)
+
+            current = grouped.get(key)
+            if current is None:
+                source_session_id = self._aggregate_session_id(username, normalized_ip, media_path)
+                grouped[key] = {
+                    "source_session_id": source_session_id,
+                    "file_path": media_path,
+                    "logs": list(related_logs),
+                    "connection": self._connection_snapshot(connection, media_path, normalized_ip),
+                }
+                continue
+
+            current["logs"].extend(related_logs)
+            current["connection"] = self._merge_connections(
+                current["connection"], connection, media_path, normalized_ip
+            )
+
+        return list(grouped.values())
 
     def _mark_stale_sessions(self, active_ids: set[str]) -> int:
         now = datetime.now(timezone.utc)
@@ -122,7 +176,7 @@ class SFTPGoSyncService:
             return log_index[conn_id]
 
         username = str(connection.get("username") or "")
-        ip_addr = str(connection.get("ip_address") or connection.get("remote_address") or "")
+        ip_addr = self._normalize_ip(str(connection.get("ip_address") or connection.get("remote_address") or ""))
         path = str(connection.get("file_path") or connection.get("path") or connection.get("current_path") or "")
 
         correlated: list[dict[str, Any]] = []
@@ -130,7 +184,10 @@ class SFTPGoSyncService:
             for log in logs:
                 if username and str(log.get("username") or "") != username:
                     continue
-                if ip_addr and str(log.get("ip_address") or "") and str(log.get("ip_address")) != ip_addr:
+                log_ip = self._normalize_ip(
+                    str(log.get("ip_address") or log.get("remote_addr") or log.get("remote_address") or "")
+                )
+                if ip_addr and log_ip and log_ip != ip_addr:
                     continue
                 log_path = str(log.get("file_path") or log.get("path") or "")
                 if path and log_path and log_path != path:
@@ -206,7 +263,149 @@ class SFTPGoSyncService:
             value = log.get("file_path") or log.get("path")
             if value:
                 return str(value)
+            info = str(log.get("info") or "")
+            extracted = _extract_path_from_info(info)
+            if extracted:
+                return extracted
+
+        info = str(connection.get("info") or "")
+        return _extract_path_from_info(info)
+
+    def _normalize_media_path_for_local_fs(self, media_path: str | None) -> str | None:
+        if not media_path:
+            return None
+
+        raw = str(media_path).strip()
+        if not raw:
+            return None
+
+        path = raw.replace("\\", "/")
+        roots = [root for root in self.poster_resolver.allowed_roots if root]
+
+        for root in roots:
+            root_posix = root.as_posix().rstrip("/")
+            if root_posix and path.startswith(root_posix):
+                return path
+
+        for root in roots:
+            root_posix = root.as_posix().rstrip("/")
+            root_name = root.name.strip().lower()
+            if not root_name:
+                continue
+
+            marker = f"/{root_name}/"
+            low_path = path.lower()
+            idx = low_path.find(marker)
+            if idx >= 0:
+                tail = path[idx + len(marker):].lstrip("/")
+                return f"{root_posix}/{tail}" if tail else root_posix
+
+        return path
+    @staticmethod
+    def _normalize_ip(value: str) -> str:
+        raw = value.strip()
+        if not raw:
+            return ""
+
+        if raw.startswith("[") and "]" in raw:
+            bracket_end = raw.find("]")
+            return raw[1:bracket_end]
+
+        if raw.count(":") == 1 and raw.rsplit(":", 1)[1].isdigit():
+            return raw.rsplit(":", 1)[0]
+
+        return raw
+
+    @staticmethod
+    def _group_key(username: str, ip_address: str, file_path: str) -> str:
+        return f"{username.strip().lower()}|{ip_address.strip()}|{file_path.strip().lower()}"
+
+    @staticmethod
+    def _aggregate_session_id(username: str, ip_address: str, file_path: str) -> str:
+        user = username.strip().lower() or "unknown"
+        ip = ip_address.strip() or "unknown"
+        path = file_path.strip().lower().replace(" ", "_")
+        return f"sftpgo-{user}-{ip}-{path}"
+
+    def _looks_like_download(self, connection: dict[str, Any], logs: list[dict[str, Any]]) -> bool:
+        if any(self._is_download_log(log) for log in logs):
+            return True
+
+        info = str(connection.get("info") or "").lower()
+        if "dl:" in info or "download" in info:
+            return True
+
+        file_path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
+        if file_path and _to_int(connection.get("bytes_sent")) not in (None, 0):
+            return True
+        return False
+
+    def _connection_snapshot(
+        self,
+        connection: dict[str, Any],
+        media_path: str,
+        normalized_ip: str,
+    ) -> dict[str, Any]:
+        snapshot = dict(connection)
+        snapshot["file_path"] = media_path
+        if normalized_ip:
+            snapshot["ip_address"] = normalized_ip
+        return snapshot
+
+    def _merge_connections(
+        self,
+        current: dict[str, Any],
+        incoming: dict[str, Any],
+        media_path: str,
+        normalized_ip: str,
+    ) -> dict[str, Any]:
+        merged = dict(current)
+
+        current_last = _to_int(current.get("last_activity")) or 0
+        incoming_last = _to_int(incoming.get("last_activity")) or 0
+        if incoming_last >= current_last:
+            merged.update(incoming)
+
+        merged["file_path"] = media_path
+        if normalized_ip:
+            merged["ip_address"] = normalized_ip
+
+        sent_total = (_to_int(current.get("bytes_sent")) or 0) + (_to_int(incoming.get("bytes_sent")) or 0)
+        recv_total = (_to_int(current.get("bytes_received")) or 0) + (_to_int(incoming.get("bytes_received")) or 0)
+        merged["bytes_sent"] = sent_total
+        merged["bytes_received"] = recv_total
+        return merged
+
+    @staticmethod
+    def _is_download_log(log: dict[str, Any]) -> bool:
+        event = str(log.get("event") or log.get("operation") or log.get("action") or "").lower()
+        direction = str(log.get("direction") or "").lower()
+        info = str(log.get("info") or "").lower()
+
+        if direction in {"download", "dl", "out"}:
+            return True
+        if any(token in event for token in ("download", "dl")):
+            return True
+        if "dl:" in info or "download" in info:
+            return True
+        return False
+
+
+def _extract_path_from_info(info: str) -> str | None:
+    if not info:
         return None
+    match = _DL_PATH_PATTERN.search(info)
+    if not match:
+        return None
+    return match.group("path")
+
+
+def _best_log_field(logs: list[dict[str, Any]], field: str) -> Any:
+    for item in reversed(logs):
+        value = item.get(field)
+        if value not in (None, ""):
+            return value
+    return None
 
 
 def _to_int(value: Any) -> int | None:
@@ -224,3 +423,6 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+

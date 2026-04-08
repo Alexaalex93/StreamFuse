@@ -9,7 +9,7 @@ from app.adapters.sftpgo.client import SFTPGoClient, SFTPGoMockProvider, SFTPGoP
 from app.adapters.sftpgo.log_parser import parse_transfer_log_lines
 from app.adapters.sftpgo.mapper import build_sftpgo_session_payload
 from app.core.config import Settings
-from app.domain.enums import SessionStatus
+from app.domain.enums import SessionStatus, StreamSource
 from app.parsers.mediainfo_parser import MediaInfoSummary
 from app.persistence.db import Base
 from app.persistence.models import unified_stream_session  # noqa: F401
@@ -41,6 +41,65 @@ class _EphemeralProvider(SFTPGoProvider):
 
     async def fetch_transfer_logs(self, limit: int = 200):
         return []
+
+
+class _DuplicateDownloadProvider(SFTPGoProvider):
+    async def fetch_active_connections(self):
+        return [
+            {
+                "connection_id": "c-1",
+                "username": "marlene",
+                "remote_address": "79.117.96.46:54967",
+                "protocol": "ftp",
+                "bytes_sent": 13_300_000,
+                "last_activity": 1710000000,
+                "info": 'DL: "/multimedia/peliculas/2 Fast 2 Furious (2003) {tmdb-584}/2 Fast 2 Furious (2003) {tmdb-584}.mkv"',
+            },
+            {
+                "connection_id": "c-2",
+                "username": "marlene",
+                "remote_address": "79.117.96.46:54969",
+                "protocol": "ftp",
+                "bytes_sent": 45_700_000,
+                "last_activity": 1710000010,
+                "info": 'DL: "/multimedia/peliculas/2 Fast 2 Furious (2003) {tmdb-584}/2 Fast 2 Furious (2003) {tmdb-584}.mkv"',
+            },
+            {
+                "connection_id": "c-3",
+                "username": "alex",
+                "remote_address": "79.117.96.46:54930",
+                "protocol": "ftp",
+                "bytes_sent": 0,
+                "last_activity": 1710000010,
+                "info": "Client: Unknown",
+            },
+        ]
+
+    async def fetch_transfer_logs(self, limit: int = 200):
+        return [
+            {
+                "connection_id": "c-1",
+                "event": "download",
+                "username": "marlene",
+                "remote_addr": "79.117.96.46:54967",
+                "file_path": "/multimedia/peliculas/2 Fast 2 Furious (2003) {tmdb-584}/2 Fast 2 Furious (2003) {tmdb-584}.mkv",
+                "bytes_sent": 13_300_000,
+            },
+            {
+                "connection_id": "c-2",
+                "event": "download",
+                "username": "marlene",
+                "remote_addr": "79.117.96.46:54969",
+                "file_path": "/multimedia/peliculas/2 Fast 2 Furious (2003) {tmdb-584}/2 Fast 2 Furious (2003) {tmdb-584}.mkv",
+                "bytes_sent": 45_700_000,
+            },
+            {
+                "connection_id": "c-3",
+                "event": "login",
+                "username": "alex",
+                "remote_addr": "79.117.96.46:54930",
+            },
+        ]
 
 
 def _make_settings() -> Settings:
@@ -119,7 +178,8 @@ def test_sftpgo_bandwidth_estimation_on_second_poll() -> None:
 
         row = db.scalar(
             select(UnifiedStreamSessionModel).where(
-                UnifiedStreamSessionModel.source_session_id == "mock-conn-1"
+                UnifiedStreamSessionModel.source == StreamSource.SFTPGO,
+                UnifiedStreamSessionModel.status == SessionStatus.ACTIVE,
             )
         )
         assert row is not None
@@ -149,7 +209,8 @@ def test_sftpgo_detects_stale_session_and_marks_ended() -> None:
 
         row = db.scalar(
             select(UnifiedStreamSessionModel).where(
-                UnifiedStreamSessionModel.source_session_id == "stale-1"
+                UnifiedStreamSessionModel.source == StreamSource.SFTPGO,
+                UnifiedStreamSessionModel.status == SessionStatus.ENDED,
             )
         )
 
@@ -209,7 +270,7 @@ def test_sftpgo_poll_once_counts_errors_and_continues(monkeypatch, caplog) -> No
             media_info=None,
             ended_at=None,
         ):
-            if source_session_id == "broken-1":
+            if connection.get("username") == "bob":
                 raise ValueError("bad connection")
             return real_builder(
                 source_session_id=source_session_id,
@@ -273,7 +334,8 @@ def test_sftpgo_applies_mediainfo_fields(monkeypatch) -> None:
 
         row = db.scalar(
             select(UnifiedStreamSessionModel).where(
-                UnifiedStreamSessionModel.source_session_id == "mock-conn-1"
+                UnifiedStreamSessionModel.source == StreamSource.SFTPGO,
+                UnifiedStreamSessionModel.status == SessionStatus.ACTIVE,
             )
         )
 
@@ -285,5 +347,38 @@ def test_sftpgo_applies_mediainfo_fields(monkeypatch) -> None:
         assert row.duration_ms == 3_492_960
         assert isinstance(row.raw_payload, dict)
         assert row.raw_payload.get("media_info", {}).get("video_bitrate_bps") == 6_249_140
+    finally:
+        db.close()
+
+
+def test_sftpgo_merges_same_download_across_ports() -> None:
+    SessionLocal = _setup_db()
+    settings = _make_settings()
+
+    db = SessionLocal()
+    try:
+        service = SessionService(UnifiedStreamSessionRepository(db))
+        sync = SFTPGoSyncService(
+            client=SFTPGoClient(_DuplicateDownloadProvider()),
+            session_service=service,
+            poster_resolver=PosterResolver(settings),
+            stale_seconds=300,
+        )
+
+        result = asyncio.run(sync.poll_once(log_limit=200))
+
+        rows = list(
+            db.scalars(
+                select(UnifiedStreamSessionModel).where(
+                    UnifiedStreamSessionModel.source == StreamSource.SFTPGO,
+                    UnifiedStreamSessionModel.status == SessionStatus.ACTIVE,
+                )
+            ).all()
+        )
+
+        assert result["active_imported"] == 1
+        assert len(rows) == 1
+        assert rows[0].ip_address == "79.117.96.46"
+        assert "2 Fast 2 Furious" in (rows[0].file_path or "")
     finally:
         db.close()
