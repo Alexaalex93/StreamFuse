@@ -4,6 +4,7 @@ import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
 
 import { getBackendBase } from "@/shared/api/client";
+import { relativeFromNow } from "@/shared/lib/date";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { StatCard } from "@/shared/ui/cards/StatCard";
 import { EmptyState } from "@/shared/ui/states/EmptyState";
@@ -20,18 +21,6 @@ function formatBandwidth(totalBps: number): string {
     return `${mbps.toFixed(1)} Mbps`;
   }
   return `${(mbps / 1000).toFixed(2)} Gbps`;
-}
-
-function relativeTime(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) {
-    return "just now";
-  }
-  if (mins < 60) {
-    return `${mins}m ago`;
-  }
-  return `${Math.floor(mins / 60)}h ago`;
 }
 
 function buildQuery(params: Record<string, string | undefined>): string {
@@ -181,7 +170,7 @@ export function DashboardPage() {
               <p className="text-sm text-fg-muted">All current activity from Tautulli and SFTPGo, unified but source-safe.</p>
             </div>
             <p className="text-xs uppercase tracking-[0.14em] text-fg-muted">
-              {lastUpdated ? `Refreshed ${relativeTime(lastUpdated.toISOString())}` : "Waiting..."}
+              {lastUpdated ? `Refreshed ${relativeFromNow(lastUpdated.toISOString())}` : "Waiting..."}
             </p>
           </div>
 
@@ -229,7 +218,7 @@ export function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <SourceBadge source={session.source} />
-                    <span className="text-xs text-fg-muted">{relativeTime(session.updated_at)}</span>
+                    <span className="text-xs text-fg-muted">{relativeFromNow(session.updated_at)}</span>
                   </div>
                 </button>
               ))}

@@ -3,7 +3,7 @@
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,13 @@ from app.poster_resolver.resolver import PosterResolver
 router = APIRouter(prefix="/posters")
 
 
-def _proxy_tautulli_thumb(settings: Settings, poster_path: str | None) -> Response | None:
+def _proxy_tautulli_thumb(
+    settings: Settings,
+    poster_path: str | None,
+    *,
+    width: int,
+    height: int,
+) -> Response | None:
     if not poster_path:
         return None
 
@@ -31,7 +37,7 @@ def _proxy_tautulli_thumb(settings: Settings, poster_path: str | None) -> Respon
     img_param = quote(path, safe="/")
     target = (
         f"{endpoint}?apikey={settings.tautulli_api_key}&cmd=pms_image_proxy"
-        f"&img={img_param}&width=220&height=330&img_format=webp"
+        f"&img={img_param}&width={width}&height={height}&img_format=webp"
     )
 
     try:
@@ -47,6 +53,8 @@ def _proxy_tautulli_thumb(settings: Settings, poster_path: str | None) -> Respon
 @router.get("/{session_id}")
 def get_poster(
     session_id: int,
+    width: int = Query(default=300, ge=80, le=2000),
+    height: int = Query(default=450, ge=80, le=2000),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> Response:
@@ -56,7 +64,7 @@ def get_poster(
         raise HTTPException(status_code=404, detail="Session not found")
 
     if session.source == StreamSource.TAUTULLI:
-        proxied = _proxy_tautulli_thumb(settings, session.poster_path)
+        proxied = _proxy_tautulli_thumb(settings, session.poster_path, width=width, height=height)
         if proxied is not None:
             return proxied
 

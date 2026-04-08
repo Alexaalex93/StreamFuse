@@ -110,6 +110,9 @@ def map_tautulli_payload(payload: dict[str, Any], *, historical: bool = False) -
     if not transcode_decision:
         transcode_decision = "direct play" if payload.get("stream_bitrate") else "unknown"
 
+    episode_poster = payload.get("grandparent_thumb") or payload.get("thumb") or payload.get("parent_thumb")
+    default_poster = payload.get("thumb") or payload.get("parent_thumb") or payload.get("grandparent_thumb")
+
     return UnifiedStreamSessionCreate(
         source=StreamSource.TAUTULLI,
         source_session_id=_source_session_id(payload),
@@ -124,7 +127,7 @@ def map_tautulli_payload(payload: dict[str, Any], *, historical: bool = False) -
         episode_number=_to_int(payload.get("media_index")) or parsed_series.get("episode_number"),
         file_path=file_path,
         file_name=file_name,
-        poster_path=payload.get("thumb") or payload.get("parent_thumb") or payload.get("grandparent_thumb"),
+        poster_path=episode_poster if media_type == MediaType.EPISODE else default_poster,
         bandwidth_bps=bandwidth_bps,
         bandwidth_human=_format_bandwidth_human(bitrate_kbps),
         started_at=started_at,

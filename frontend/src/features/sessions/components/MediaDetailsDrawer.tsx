@@ -3,6 +3,7 @@
 import { UnifiedSession } from "@/types/session";
 
 import { getBackendBase } from "@/shared/api/client";
+import { formatLocalDateTime } from "@/shared/lib/date";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { Button } from "@/shared/ui/button";
 
@@ -11,17 +12,6 @@ import { ProgressBar } from "./ProgressBar";
 
 const FALLBACK_POSTER =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect width='100%25' height='100%25' fill='%23111b2f'/><text x='50%25' y='50%25' fill='%2394a3b8' font-size='18' text-anchor='middle' dominant-baseline='middle'>No poster</text></svg>";
-
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "n/a";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "n/a";
-  }
-  return date.toLocaleString();
-}
 
 function formatMediaInfoBitrate(session: UnifiedSession): string {
   const raw = session.raw_payload;
@@ -66,7 +56,7 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
     if (!session) {
       return FALLBACK_POSTER;
     }
-    return `${getBackendBase()}/api/v1/posters/${session.id}`;
+    return `${getBackendBase()}/api/v1/posters/${session.id}?width=520&height=780`;
   }, [session]);
 
   return (
@@ -138,9 +128,9 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4 text-xs text-fg-muted">
                 <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Timeline</p>
                 <div className="mt-3 space-y-1">
-                  <p><span className="text-white">Started:</span> {formatDate(session.started_at)}</p>
-                  <p><span className="text-white">Ended:</span> {formatDate(session.ended_at)}</p>
-                  <p><span className="text-white">Updated:</span> {formatDate(session.updated_at)}</p>
+                  <p><span className="text-white">Started:</span> {formatLocalDateTime(session.started_at)}</p>
+                  <p><span className="text-white">Ended:</span> {formatLocalDateTime(session.ended_at)}</p>
+                  <p><span className="text-white">Updated:</span> {formatLocalDateTime(session.updated_at)}</p>
                 </div>
               </div>
 
