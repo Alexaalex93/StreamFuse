@@ -1,4 +1,4 @@
-﻿import asyncio
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -7,13 +7,27 @@ from app.adapters.sftpgo.client import SFTPGoClient, SFTPGoHTTPProvider, SFTPGoM
 from app.adapters.tautulli.client import TautulliClient, TautulliHTTPProvider, TautulliMockProvider
 from app.api.deps import get_app_settings, get_db
 from app.core.config import Settings
+from app.persistence.repositories.app_setting_repository import AppSettingRepository
 from app.persistence.repositories.unified_stream_session_repository import UnifiedStreamSessionRepository
 from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
+from app.services.settings_service import SettingsService
 from app.services.sftpgo_sync_service import SFTPGoSyncService
 from app.services.tautulli_sync_service import TautulliSyncService
 
 router = APIRouter(prefix="/internal")
+
+
+def _parse_list(raw: str) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
 
 
 @router.post("/tautulli/import")
@@ -52,6 +66,11 @@ async def poll_sftpgo(
 ) -> dict[str, int | bool]:
     mock_enabled = settings.sftpgo_use_mock if use_mock is None else use_mock
 
+    setting_repo = AppSettingRepository(db)
+    custom_mapping_row = setting_repo.get(SettingsService.KEY_SFTPGO_PATH_MAPPINGS)
+    mapping_raw = custom_mapping_row.value if custom_mapping_row else settings.sftpgo_path_mappings
+    path_mappings = _parse_list(mapping_raw)
+
     provider = (
         SFTPGoMockProvider()
         if mock_enabled
@@ -69,6 +88,7 @@ async def poll_sftpgo(
         session_service=session_service,
         poster_resolver=PosterResolver(settings),
         stale_seconds=settings.sftpgo_stale_seconds,
+        path_mappings=path_mappings,
     )
     try:
         result = await sync_service.poll_once(log_limit=settings.sftpgo_log_limit)
@@ -79,4 +99,3 @@ async def poll_sftpgo(
         **result,
         "used_mock": mock_enabled,
     }
-

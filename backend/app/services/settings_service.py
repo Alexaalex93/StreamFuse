@@ -16,6 +16,7 @@ class SettingsService:
     KEY_SFTPGO_URL = "sftpgo_url"
     KEY_SFTPGO_TOKEN = "sftpgo_token"
     KEY_SFTPGO_LOGS_PATH = "sftpgo_logs_path"
+    KEY_SFTPGO_PATH_MAPPINGS = "sftpgo_path_mappings"
     KEY_POLLING_FREQUENCY_SECONDS = "polling_frequency_seconds"
     KEY_TIMEZONE = "timezone"
     KEY_MEDIA_ROOT_PATHS = "media_root_paths"
@@ -29,6 +30,7 @@ class SettingsService:
         KEY_SFTPGO_URL: "SFTPGo base URL",
         KEY_SFTPGO_TOKEN: "SFTPGo token/API key (secret)",
         KEY_SFTPGO_LOGS_PATH: "SFTPGo transfer logs JSON path",
+        KEY_SFTPGO_PATH_MAPPINGS: "SFTPGo path mappings as JSON list",
         KEY_POLLING_FREQUENCY_SECONDS: "Polling frequency in seconds",
         KEY_TIMEZONE: "Display timezone",
         KEY_MEDIA_ROOT_PATHS: "Media root paths as JSON list",
@@ -73,6 +75,13 @@ class SettingsService:
                 self.app_settings.sftpgo_transfer_log_json_path,
             )
             or None,
+            sftpgo_path_mappings=self._parse_list(
+                self._value_or_default(
+                    by_key,
+                    self.KEY_SFTPGO_PATH_MAPPINGS,
+                    self._serialize_list(self._parse_csv(self.app_settings.sftpgo_path_mappings)),
+                )
+            ),
             polling_frequency_seconds=int(
                 self._value_or_default(
                     by_key,
@@ -116,6 +125,8 @@ class SettingsService:
             self._set(self.KEY_SFTPGO_URL, payload.sftpgo_url)
         if payload.sftpgo_logs_path is not None:
             self._set(self.KEY_SFTPGO_LOGS_PATH, payload.sftpgo_logs_path)
+        if payload.sftpgo_path_mappings is not None:
+            self._set(self.KEY_SFTPGO_PATH_MAPPINGS, self._serialize_list(payload.sftpgo_path_mappings))
 
         if payload.polling_frequency_seconds is not None:
             self._set(self.KEY_POLLING_FREQUENCY_SECONDS, str(payload.polling_frequency_seconds))

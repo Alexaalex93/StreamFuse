@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.adapters.sftpgo.client import SFTPGoClient
@@ -16,6 +16,18 @@ from app.services.session_service import SessionService
 logger = logging.getLogger(__name__)
 
 _DL_PATH_PATTERN = re.compile(r'dl:\s*"(?P<path>[^"]+)"', re.IGNORECASE)
+_MEDIA_FILE_EXTENSIONS = {
+    ".mkv",
+    ".mp4",
+    ".avi",
+    ".mov",
+    ".m4v",
+    ".ts",
+    ".wmv",
+    ".flv",
+    ".webm",
+    ".iso",
+}
 
 
 class SFTPGoSyncService:
@@ -25,11 +37,13 @@ class SFTPGoSyncService:
         session_service: SessionService,
         poster_resolver: PosterResolver,
         stale_seconds: int = 180,
+        path_mappings: list[str] | None = None,
     ) -> None:
         self.client = client
         self.session_service = session_service
         self.poster_resolver = poster_resolver
         self.stale_seconds = stale_seconds
+        self.path_mappings = self._parse_path_mappings(path_mappings or [])
         self._last_sample: dict[str, tuple[int, datetime]] = {}
 
     async def poll_once(self, log_limit: int = 200) -> dict[str, int]:
@@ -52,13 +66,18 @@ class SFTPGoSyncService:
                     continue
 
                 seen_ids.add(source_session_id)
-                connection = group["connection"]
+                connection = dict(group["connection"])
                 related_logs = group["logs"]
                 media_path = self._normalize_media_path_for_local_fs(group["file_path"])
-                if not media_path:
+                if not media_path or not self._looks_like_media_file(media_path):
                     continue
+                connection["file_path"] = media_path
 
-                bandwidth_bps = self._estimate_bandwidth_bps(source_session_id, connection, related_logs)
+                bandwidth_bps = self._estimate_bandwidth_bps(
+                    source_session_id,
+                    connection,
+                    related_logs,
+                )
                 media_info = parse_mediainfo_for_media(media_path)
                 poster = self.poster_resolver.resolve(media_path, None)
 
@@ -95,14 +114,19 @@ class SFTPGoSyncService:
 
         for connection in active_connections:
             related_logs = self._correlate_logs(connection, log_index)
+
+            media_path = self._resolve_file_path(connection, related_logs)
+            if not media_path or not self._looks_like_media_file(media_path):
+                continue
+
             if not self._looks_like_download(connection, related_logs):
                 continue
 
-            media_path = self._resolve_file_path(connection, related_logs)
-            if not media_path:
-                continue
-
-            username = str(connection.get("username") or _best_log_field(related_logs, "username") or "unknown")
+            username = str(
+                connection.get("username")
+                or _best_log_field(related_logs, "username")
+                or "unknown"
+            )
             ip_value = str(
                 connection.get("ip_address")
                 or connection.get("remote_address")
@@ -120,19 +144,26 @@ class SFTPGoSyncService:
                     "source_session_id": source_session_id,
                     "file_path": media_path,
                     "logs": list(related_logs),
-                    "connection": self._connection_snapshot(connection, media_path, normalized_ip),
+                    "connection": self._connection_snapshot(
+                        connection,
+                        media_path,
+                        normalized_ip,
+                    ),
                 }
                 continue
 
             current["logs"].extend(related_logs)
             current["connection"] = self._merge_connections(
-                current["connection"], connection, media_path, normalized_ip
+                current["connection"],
+                connection,
+                media_path,
+                normalized_ip,
             )
 
         return list(grouped.values())
 
     def _mark_stale_sessions(self, active_ids: set[str]) -> int:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stale_threshold = now - timedelta(seconds=self.stale_seconds)
 
         rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
@@ -176,8 +207,15 @@ class SFTPGoSyncService:
             return log_index[conn_id]
 
         username = str(connection.get("username") or "")
-        ip_addr = self._normalize_ip(str(connection.get("ip_address") or connection.get("remote_address") or ""))
-        path = str(connection.get("file_path") or connection.get("path") or connection.get("current_path") or "")
+        ip_addr = self._normalize_ip(
+            str(connection.get("ip_address") or connection.get("remote_address") or "")
+        )
+        path = str(
+            connection.get("file_path")
+            or connection.get("path")
+            or connection.get("current_path")
+            or ""
+        )
 
         correlated: list[dict[str, Any]] = []
         for logs in log_index.values():
@@ -185,7 +223,12 @@ class SFTPGoSyncService:
                 if username and str(log.get("username") or "") != username:
                     continue
                 log_ip = self._normalize_ip(
-                    str(log.get("ip_address") or log.get("remote_addr") or log.get("remote_address") or "")
+                    str(
+                        log.get("ip_address")
+                        or log.get("remote_addr")
+                        or log.get("remote_address")
+                        or ""
+                    )
                 )
                 if ip_addr and log_ip and log_ip != ip_addr:
                     continue
@@ -201,7 +244,7 @@ class SFTPGoSyncService:
         connection: dict[str, Any],
         logs: list[dict[str, Any]],
     ) -> int | None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bytes_now = self._extract_total_bytes(connection, logs)
         if bytes_now is None:
             return None
@@ -243,17 +286,6 @@ class SFTPGoSyncService:
         return conn_total if conn_total is not None else log_total
 
     @staticmethod
-    def _resolve_session_id(connection: dict[str, Any]) -> str:
-        raw = connection.get("connection_id") or connection.get("id")
-        if raw:
-            return str(raw)
-
-        user = str(connection.get("username") or "unknown")
-        ip_addr = str(connection.get("ip_address") or connection.get("remote_address") or "unknown")
-        path = str(connection.get("file_path") or connection.get("path") or connection.get("current_path") or "")
-        return f"sftpgo-{user}-{ip_addr}-{path}".strip("-")
-
-    @staticmethod
     def _resolve_file_path(connection: dict[str, Any], logs: list[dict[str, Any]]) -> str | None:
         path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
         if path:
@@ -275,18 +307,26 @@ class SFTPGoSyncService:
         if not media_path:
             return None
 
-        raw = str(media_path).strip()
-        if not raw:
+        path = str(media_path).strip().replace("\\", "/")
+        if not path:
             return None
 
-        path = raw.replace("\\", "/")
-        roots = [root for root in self.poster_resolver.allowed_roots if root]
+        # 1) Explicit admin mappings from settings UI.
+        for source_prefix, target_prefix in self.path_mappings:
+            source = source_prefix.rstrip("/")
+            target = target_prefix.rstrip("/")
+            if source and path.startswith(source):
+                tail = path[len(source) :].lstrip("/")
+                return f"{target}/{tail}" if tail else target
 
+        # 2) Already mapped to allowed roots.
+        roots = [root for root in self.poster_resolver.allowed_roots if root]
         for root in roots:
             root_posix = root.as_posix().rstrip("/")
             if root_posix and path.startswith(root_posix):
                 return path
 
+        # 3) Suffix mapping by root folder name (peliculas/series).
         for root in roots:
             root_posix = root.as_posix().rstrip("/")
             root_name = root.name.strip().lower()
@@ -294,13 +334,13 @@ class SFTPGoSyncService:
                 continue
 
             marker = f"/{root_name}/"
-            low_path = path.lower()
-            idx = low_path.find(marker)
+            idx = path.lower().find(marker)
             if idx >= 0:
-                tail = path[idx + len(marker):].lstrip("/")
+                tail = path[idx + len(marker) :].lstrip("/")
                 return f"{root_posix}/{tail}" if tail else root_posix
 
         return path
+
     @staticmethod
     def _normalize_ip(value: str) -> str:
         raw = value.strip()
@@ -332,13 +372,7 @@ class SFTPGoSyncService:
             return True
 
         info = str(connection.get("info") or "").lower()
-        if "dl:" in info or "download" in info:
-            return True
-
-        file_path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
-        if file_path and _to_int(connection.get("bytes_sent")) not in (None, 0):
-            return True
-        return False
+        return bool("dl:" in info or "download" in info)
 
     def _connection_snapshot(
         self,
@@ -370,8 +404,12 @@ class SFTPGoSyncService:
         if normalized_ip:
             merged["ip_address"] = normalized_ip
 
-        sent_total = (_to_int(current.get("bytes_sent")) or 0) + (_to_int(incoming.get("bytes_sent")) or 0)
-        recv_total = (_to_int(current.get("bytes_received")) or 0) + (_to_int(incoming.get("bytes_received")) or 0)
+        sent_total = (_to_int(current.get("bytes_sent")) or 0) + (
+            _to_int(incoming.get("bytes_sent")) or 0
+        )
+        recv_total = (_to_int(current.get("bytes_received")) or 0) + (
+            _to_int(incoming.get("bytes_received")) or 0
+        )
         merged["bytes_sent"] = sent_total
         merged["bytes_received"] = recv_total
         return merged
@@ -389,6 +427,30 @@ class SFTPGoSyncService:
         if "dl:" in info or "download" in info:
             return True
         return False
+
+    @staticmethod
+    def _looks_like_media_file(path: str) -> bool:
+        normalized = path.strip().lower()
+        return any(normalized.endswith(ext) for ext in _MEDIA_FILE_EXTENSIONS)
+
+    @staticmethod
+    def _parse_path_mappings(items: list[str]) -> list[tuple[str, str]]:
+        parsed: list[tuple[str, str]] = []
+        for raw in items:
+            text = str(raw).strip()
+            if not text:
+                continue
+
+            for separator in ("->", "=", ":"):
+                if separator in text:
+                    left, right = text.split(separator, 1)
+                    source = left.strip().replace("\\", "/")
+                    target = right.strip().replace("\\", "/")
+                    if source and target:
+                        parsed.append((source, target))
+                    break
+
+        return parsed
 
 
 def _extract_path_from_info(info: str) -> str | None:
@@ -421,8 +483,6 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 

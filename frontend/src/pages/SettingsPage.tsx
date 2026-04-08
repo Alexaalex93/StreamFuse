@@ -12,6 +12,7 @@ type SettingsFormState = {
   sftpgoUrl: string;
   sftpgoToken: string;
   sftpgoLogsPath: string;
+  sftpgoPathMappings: string;
   pollingFrequencySeconds: string;
   timezone: string;
   mediaRootPaths: string;
@@ -22,7 +23,7 @@ type SettingsFormState = {
 
 function parseListFromTextarea(text: string): string[] {
   return text
-    .split(/\r?\n|,/)
+    .split(/\r?\n|,/) 
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -34,6 +35,7 @@ function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
     sftpgoUrl: settings.sftpgo_url,
     sftpgoToken: "",
     sftpgoLogsPath: settings.sftpgo_logs_path ?? "",
+    sftpgoPathMappings: settings.sftpgo_path_mappings.join("\n"),
     pollingFrequencySeconds: String(settings.polling_frequency_seconds),
     timezone: settings.timezone,
     mediaRootPaths: settings.media_root_paths.join("\n"),
@@ -122,6 +124,7 @@ export function SettingsPage() {
       tautulli_url: form.tautulliUrl.trim(),
       sftpgo_url: form.sftpgoUrl.trim(),
       sftpgo_logs_path: form.sftpgoLogsPath.trim(),
+      sftpgo_path_mappings: parseListFromTextarea(form.sftpgoPathMappings),
       polling_frequency_seconds: Number(form.pollingFrequencySeconds),
       timezone: form.timezone.trim(),
       media_root_paths: parseListFromTextarea(form.mediaRootPaths),
@@ -192,9 +195,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="tautulli-url">
-              Tautulli URL
-            </label>
+            <label className={labelClass} htmlFor="tautulli-url">Tautulli URL</label>
             <input
               id="tautulli-url"
               className={inputClass}
@@ -204,9 +205,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="tautulli-api-key">
-              Tautulli API Key
-            </label>
+            <label className={labelClass} htmlFor="tautulli-api-key">Tautulli API Key</label>
             <input
               id="tautulli-api-key"
               type="password"
@@ -222,9 +221,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="sftpgo-url">
-              SFTPGo URL
-            </label>
+            <label className={labelClass} htmlFor="sftpgo-url">SFTPGo URL</label>
             <input
               id="sftpgo-url"
               className={inputClass}
@@ -234,9 +231,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="sftpgo-token">
-              SFTPGo Token / Credentials
-            </label>
+            <label className={labelClass} htmlFor="sftpgo-token">SFTPGo Token / Credentials</label>
             <input
               id="sftpgo-token"
               type="password"
@@ -252,9 +247,7 @@ export function SettingsPage() {
           </div>
 
           <div className="md:col-span-2">
-            <label className={labelClass} htmlFor="sftpgo-logs-path">
-              SFTPGo Logs Path
-            </label>
+            <label className={labelClass} htmlFor="sftpgo-logs-path">SFTPGo Logs Path</label>
             <input
               id="sftpgo-logs-path"
               className={inputClass}
@@ -262,6 +255,19 @@ export function SettingsPage() {
               onChange={(event) => setForm({ ...form, sftpgoLogsPath: event.target.value })}
               placeholder="/srv/sftpgo/logs/transfers.json"
             />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelClass} htmlFor="sftpgo-path-mappings">SFTPGo Path Mappings (one per line)</label>
+            <textarea
+              id="sftpgo-path-mappings"
+              rows={4}
+              className={inputClass}
+              value={form.sftpgoPathMappings}
+              onChange={(event) => setForm({ ...form, sftpgoPathMappings: event.target.value })}
+              placeholder="/multimedia/peliculas:/peliculas&#10;/multimedia/series:/series"
+            />
+            <p className="mt-1 text-xs text-fg-muted">Format: source:target, source=target or source-&gt;target.</p>
           </div>
         </section>
 
@@ -272,9 +278,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="polling-frequency">
-              Polling Frequency (seconds)
-            </label>
+            <label className={labelClass} htmlFor="polling-frequency">Polling Frequency (seconds)</label>
             <input
               id="polling-frequency"
               type="number"
@@ -286,9 +290,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="timezone">
-              Timezone
-            </label>
+            <label className={labelClass} htmlFor="timezone">Timezone</label>
             <input
               id="timezone"
               className={inputClass}
@@ -299,9 +301,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="placeholder-path">
-              Placeholder Path
-            </label>
+            <label className={labelClass} htmlFor="placeholder-path">Placeholder Path</label>
             <input
               id="placeholder-path"
               className={inputClass}
@@ -311,9 +311,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="history-retention">
-              History Retention (days)
-            </label>
+            <label className={labelClass} htmlFor="history-retention">History Retention (days)</label>
             <input
               id="history-retention"
               type="number"
@@ -325,9 +323,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="media-roots">
-              Media Root Paths
-            </label>
+            <label className={labelClass} htmlFor="media-roots">Media Root Paths</label>
             <textarea
               id="media-roots"
               rows={5}
@@ -339,9 +335,7 @@ export function SettingsPage() {
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="poster-names">
-              Preferred Poster Names
-            </label>
+            <label className={labelClass} htmlFor="poster-names">Preferred Poster Names</label>
             <textarea
               id="poster-names"
               rows={5}

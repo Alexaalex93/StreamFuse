@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     sftpgo_api_key: str = "changeme"
     sftpgo_use_mock: bool = True
     sftpgo_transfer_log_json_path: str = ""
+    sftpgo_path_mappings: str = ""
     sftpgo_stale_seconds: int = 180
     sftpgo_log_limit: int = 200
 

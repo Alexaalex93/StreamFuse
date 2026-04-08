@@ -6,6 +6,7 @@ export type StreamFuseSettings = {
   sftpgo_token_set: boolean;
   sftpgo_token_masked: string | null;
   sftpgo_logs_path: string | null;
+  sftpgo_path_mappings: string[];
   polling_frequency_seconds: number;
   timezone: string;
   media_root_paths: string[];
@@ -21,6 +22,7 @@ export type StreamFuseSettingsUpdate = {
   sftpgo_url?: string;
   sftpgo_token?: string;
   sftpgo_logs_path?: string | null;
+  sftpgo_path_mappings?: string[];
   polling_frequency_seconds?: number;
   timezone?: string;
   media_root_paths?: string[];

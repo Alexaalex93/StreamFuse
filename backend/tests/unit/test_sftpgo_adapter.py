@@ -14,7 +14,9 @@ from app.parsers.mediainfo_parser import MediaInfoSummary
 from app.persistence.db import Base
 from app.persistence.models import unified_stream_session  # noqa: F401
 from app.persistence.models.unified_stream_session import UnifiedStreamSessionModel
-from app.persistence.repositories.unified_stream_session_repository import UnifiedStreamSessionRepository
+from app.persistence.repositories.unified_stream_session_repository import (
+    UnifiedStreamSessionRepository,
+)
 from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
 from app.services.sftpgo_sync_service import SFTPGoSyncService
@@ -35,6 +37,7 @@ class _EphemeralProvider(SFTPGoProvider):
                     "file_path": "/media/movies/Arrival.2016.mkv",
                     "bytes_sent": 1000,
                     "start_time": int(datetime.now(timezone.utc).timestamp()) - 60,
+                    "info": 'DL: "/media/movies/Arrival.2016.mkv"',
                 }
             ]
         return []
@@ -113,9 +116,9 @@ def _make_settings() -> Settings:
 
 def _setup_db():
     engine = create_engine("sqlite:///:memory:", future=True)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=engine)
-    return SessionLocal
+    return session_local
 
 
 def test_parse_transfer_log_lines_skips_invalid_json() -> None:
@@ -133,10 +136,10 @@ def test_parse_transfer_log_lines_skips_invalid_json() -> None:
 
 
 def test_sftpgo_sync_imports_mock_as_unified_sessions() -> None:
-    SessionLocal = _setup_db()
+    session_local = _setup_db()
     settings = _make_settings()
 
-    db = SessionLocal()
+    db = session_local()
     try:
         service = SessionService(UnifiedStreamSessionRepository(db))
         sync = SFTPGoSyncService(
@@ -159,10 +162,10 @@ def test_sftpgo_sync_imports_mock_as_unified_sessions() -> None:
 
 
 def test_sftpgo_bandwidth_estimation_on_second_poll() -> None:
-    SessionLocal = _setup_db()
+    session_local = _setup_db()
     settings = _make_settings()
 
-    db = SessionLocal()
+    db = session_local()
     try:
         service = SessionService(UnifiedStreamSessionRepository(db))
         sync = SFTPGoSyncService(
@@ -190,10 +193,10 @@ def test_sftpgo_bandwidth_estimation_on_second_poll() -> None:
 
 
 def test_sftpgo_detects_stale_session_and_marks_ended() -> None:
-    SessionLocal = _setup_db()
+    session_local = _setup_db()
     settings = _make_settings()
 
-    db = SessionLocal()
+    db = session_local()
     try:
         service = SessionService(UnifiedStreamSessionRepository(db))
         sync = SFTPGoSyncService(
@@ -231,6 +234,7 @@ def test_sftpgo_poll_once_counts_errors_and_continues(monkeypatch, caplog) -> No
                     "ip_address": "192.168.1.20",
                     "file_path": "/media/movies/Arrival.2016.mkv",
                     "bytes_sent": 10,
+                    "info": 'DL: "/media/movies/Arrival.2016.mkv"',
                 },
                 {
                     "connection_id": "broken-1",
@@ -238,16 +242,17 @@ def test_sftpgo_poll_once_counts_errors_and_continues(monkeypatch, caplog) -> No
                     "ip_address": "192.168.1.21",
                     "file_path": "/media/movies/Broken.mkv",
                     "bytes_sent": 20,
+                    "info": 'DL: "/media/movies/Broken.mkv"',
                 },
             ]
 
         async def fetch_transfer_logs(self, limit: int = 200):
             return []
 
-    SessionLocal = _setup_db()
+    session_local = _setup_db()
     settings = _make_settings()
 
-    db = SessionLocal()
+    db = session_local()
     try:
         service = SessionService(UnifiedStreamSessionRepository(db))
         sync = SFTPGoSyncService(
@@ -302,10 +307,10 @@ def test_sftpgo_poll_once_counts_errors_and_continues(monkeypatch, caplog) -> No
 
 
 def test_sftpgo_applies_mediainfo_fields(monkeypatch) -> None:
-    SessionLocal = _setup_db()
+    session_local = _setup_db()
     settings = _make_settings()
 
-    db = SessionLocal()
+    db = session_local()
     try:
         service = SessionService(UnifiedStreamSessionRepository(db))
         sync = SFTPGoSyncService(
@@ -352,10 +357,10 @@ def test_sftpgo_applies_mediainfo_fields(monkeypatch) -> None:
 
 
 def test_sftpgo_merges_same_download_across_ports() -> None:
-    SessionLocal = _setup_db()
+    session_local = _setup_db()
     settings = _make_settings()
 
-    db = SessionLocal()
+    db = session_local()
     try:
         service = SessionService(UnifiedStreamSessionRepository(db))
         sync = SFTPGoSyncService(
@@ -363,6 +368,7 @@ def test_sftpgo_merges_same_download_across_ports() -> None:
             session_service=service,
             poster_resolver=PosterResolver(settings),
             stale_seconds=300,
+            path_mappings=["/multimedia/peliculas:/peliculas"],
         )
 
         result = asyncio.run(sync.poll_once(log_limit=200))
@@ -379,6 +385,6 @@ def test_sftpgo_merges_same_download_across_ports() -> None:
         assert result["active_imported"] == 1
         assert len(rows) == 1
         assert rows[0].ip_address == "79.117.96.46"
-        assert "2 Fast 2 Furious" in (rows[0].file_path or "")
+        assert "/peliculas/2 Fast 2 Furious" in (rows[0].file_path or "")
     finally:
         db.close()

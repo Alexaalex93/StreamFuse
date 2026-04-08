@@ -13,6 +13,7 @@ class StreamFuseSettingsResponse(BaseModel):
     sftpgo_token_set: bool
     sftpgo_token_masked: str | None
     sftpgo_logs_path: str | None
+    sftpgo_path_mappings: list[str]
 
     polling_frequency_seconds: int
     timezone: str
@@ -32,6 +33,7 @@ class StreamFuseSettingsUpdate(BaseModel):
     sftpgo_url: str | None = None
     sftpgo_token: str | None = Field(default=None, description="Only send when updating secret")
     sftpgo_logs_path: str | None = None
+    sftpgo_path_mappings: list[str] | None = None
 
     polling_frequency_seconds: int | None = None
     timezone: str | None = None
@@ -78,7 +80,7 @@ class StreamFuseSettingsUpdate(BaseModel):
             raise ValueError("history_retention_days must be >= 1")
         return value
 
-    @field_validator("media_root_paths", "preferred_poster_names")
+    @field_validator("media_root_paths", "preferred_poster_names", "sftpgo_path_mappings")
     @classmethod
     def validate_list_items(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
