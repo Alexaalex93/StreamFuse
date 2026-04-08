@@ -1,4 +1,4 @@
-services:
+﻿services:
   backend:
     build:
       context: .
@@ -36,6 +36,7 @@ services:
       target: prod
     ports:
       - "8080:80"
+      - "5173:80"
     labels:
       - "net.unraid.docker.icon=https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/frontend/public/favicon.svg"
     depends_on:
