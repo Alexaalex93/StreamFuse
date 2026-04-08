@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import dashboard, unified_sessions
@@ -9,6 +9,7 @@ from app.api.v1.routers import (
     posters,
     sessions,
     settings,
+    source_health,
     stats,
 )
 from app.core.config import get_settings
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(stats.router, prefix="/api", tags=["stats"])
     app.include_router(settings.router, prefix="/api", tags=["settings"])
     app.include_router(dashboard.router, prefix="/api", tags=["dashboard"])
+    app.include_router(source_health.router, prefix="/api", tags=["source-health"])
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
@@ -46,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(internal_sync.router, prefix="/api/v1", tags=["internal-sync"])
     app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
     app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
+    app.include_router(source_health.router, prefix="/api/v1", tags=["source-health"])
 
     return app
 

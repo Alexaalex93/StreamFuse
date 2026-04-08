@@ -1,7 +1,8 @@
-﻿import { ReactNode } from "react";
+﻿import { ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppSection } from "@/app/App";
 import { StreamFuseLogo } from "@/shared/branding/StreamFuseLogo";
+import { apiGet } from "@/shared/api/client";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 
@@ -11,6 +12,21 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+type SourceKey = "tautulli" | "sftpgo";
+
+type SourceHealthItem = {
+  configured: boolean;
+  connected: boolean;
+  status: string;
+  reason?: string | null;
+};
+
+type SourceHealthResponse = {
+  tautulli: SourceHealthItem;
+  sftpgo: SourceHealthItem;
+  updated_at: string;
+};
+
 const navItems: Array<{ id: AppSection; label: string; hint: string }> = [
   { id: "dashboard", label: "Dashboard", hint: "Live control room" },
   { id: "history", label: "History", hint: "Playback timeline" },
@@ -18,7 +34,51 @@ const navItems: Array<{ id: AppSection; label: string; hint: string }> = [
   { id: "settings", label: "Settings", hint: "System config" },
 ];
 
+function statusLabel(item: SourceHealthItem | null): string {
+  if (!item) {
+    return "checking";
+  }
+  return item.connected ? "connected" : "disconnected";
+}
+
 export function AppShell({ currentSection, onChangeSection, children }: AppShellProps) {
+  const [health, setHealth] = useState<SourceHealthResponse | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchHealth = async () => {
+      try {
+        const data = await apiGet<SourceHealthResponse>("/sources/health");
+        if (isMounted) {
+          setHealth(data);
+        }
+      } catch {
+        if (isMounted) {
+          setHealth(null);
+        }
+      }
+    };
+
+    void fetchHealth();
+    const id = window.setInterval(() => {
+      void fetchHealth();
+    }, 20000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const sourceRows = useMemo(
+    () => [
+      { key: "tautulli" as SourceKey, label: "Tautulli", item: health?.tautulli ?? null },
+      { key: "sftpgo" as SourceKey, label: "SFTPGo", item: health?.sftpgo ?? null },
+    ],
+    [health],
+  );
+
   return (
     <div className="min-h-screen bg-app-gradient text-fg">
       <div className="mx-auto grid min-h-screen max-w-[1440px] grid-cols-1 lg:grid-cols-[280px_1fr]">
@@ -56,8 +116,23 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
           <div className="mt-8 rounded-xl border border-white/10 bg-card/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Source Health</p>
             <div className="mt-3 space-y-2 text-sm text-fg-muted">
-              <p>Tautulli: connected</p>
-              <p>SFTPGo: connected</p>
+              {sourceRows.map((row) => {
+                const connected = row.item?.connected === true;
+                return (
+                  <div key={row.key} className="flex items-center justify-between gap-2">
+                    <span>{row.label}</span>
+                    <span className="inline-flex items-center gap-2 text-xs uppercase tracking-wide">
+                      <span
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-full",
+                          connected ? "bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.2)]" : "bg-rose-400 shadow-[0_0_0_3px_rgba(251,113,133,0.2)]",
+                        )}
+                      />
+                      {statusLabel(row.item)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </aside>
