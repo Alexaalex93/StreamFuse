@@ -71,8 +71,8 @@ function extractBitrate(session: UnifiedSession): string {
 
 export function SessionCard({ session, onOpen }: SessionCardProps) {
   const backend = getBackendBase();
-  const posterSrc = `${backend}/api/v1/posters/${session.id}?width=1000&height=1500`;
-  const fanartSrc = `${backend}/api/v1/posters/${session.id}?width=1920&height=1080`;
+  const posterSrc = `${backend}/api/v1/posters/${session.id}?variant=poster&width=1000&height=1500`;
+  const fanartSrc = `${backend}/api/v1/posters/${session.id}?variant=fanart&width=1920&height=1080`;
   const progress = Math.max(0, Math.min(100, session.progress_percent ?? 0));
   const pathText = summarizePath(session.file_path);
   const bitrateText = extractBitrate(session);
@@ -90,7 +90,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
         }
       }}
     >
-      <div className="relative h-[220px]">
+      <div className="relative h-[210px]">
         <div
           className="absolute inset-0 bg-no-repeat bg-contain bg-center opacity-55"
           style={{ backgroundImage: `url(${fanartSrc})` }}
@@ -100,7 +100,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/88 via-slate-900/42 to-slate-900/62" aria-hidden />
 
         <div className="relative flex h-full gap-3 p-3">
-          <div className="flex h-full w-[104px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-black/35 shadow-lg">
+          <div className="flex h-full w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-black/35 shadow-lg">
             <img
               src={posterSrc}
               alt={session.title || "Poster"}
@@ -153,4 +153,5 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     </article>
   );
 }
+
 

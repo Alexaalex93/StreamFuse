@@ -16,17 +16,17 @@ from app.poster_resolver.resolver import PosterResolver
 router = APIRouter(prefix="/posters")
 
 
-def _proxy_tautulli_thumb(
+def _proxy_tautulli_image(
     settings: Settings,
-    poster_path: str | None,
+    image_path: str | None,
     *,
     width: int,
     height: int,
 ) -> Response | None:
-    if not poster_path:
+    if not image_path:
         return None
 
-    path = poster_path.strip()
+    path = image_path.strip()
     if not path.startswith("/library/"):
         return None
 
@@ -50,11 +50,28 @@ def _proxy_tautulli_thumb(
         return None
 
 
+def _tautulli_path_for_variant(session, variant: str) -> str | None:
+    raw = session.raw_payload if isinstance(session.raw_payload, dict) else {}
+
+    if variant == "fanart":
+        return (
+            raw.get("art")
+            or raw.get("grandparent_art")
+            or raw.get("parent_art")
+            or raw.get("thumb")
+            or raw.get("grandparent_thumb")
+            or session.poster_path
+        )
+
+    return session.poster_path or raw.get("thumb") or raw.get("grandparent_thumb")
+
+
 @router.get("/{session_id}")
 def get_poster(
     session_id: int,
     width: int = Query(default=300, ge=80, le=2000),
     height: int = Query(default=450, ge=80, le=2000),
+    variant: str = Query(default="poster", pattern="^(poster|fanart)$"),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> Response:
@@ -64,12 +81,13 @@ def get_poster(
         raise HTTPException(status_code=404, detail="Session not found")
 
     if session.source == StreamSource.TAUTULLI:
-        proxied = _proxy_tautulli_thumb(settings, session.poster_path, width=width, height=height)
+        image_path = _tautulli_path_for_variant(session, variant)
+        proxied = _proxy_tautulli_image(settings, image_path, width=width, height=height)
         if proxied is not None:
             return proxied
 
     resolver = PosterResolver(settings)
-    poster_path = resolver.resolve(session.file_path, session.media_type)
+    poster_path = resolver.resolve(session.file_path, session.media_type, variant=variant)
 
     if not poster_path.exists() or not poster_path.is_file():
         raise HTTPException(status_code=404, detail="Poster not found")

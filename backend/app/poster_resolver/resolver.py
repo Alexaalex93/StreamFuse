@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -10,8 +10,10 @@ from app.parsers.media_parser import detect_media_type
 
 logger = logging.getLogger(__name__)
 
-_MOVIE_PRIORITY = ["poster.jpg", "cover.jpg", "folder.jpg", "movie.jpg"]
-_SERIES_PRIORITY = ["poster.jpg", "cover.jpg", "folder.jpg", "series.jpg"]
+_MOVIE_POSTER_PRIORITY = ["poster.jpg", "cover.jpg", "folder.jpg", "movie.jpg"]
+_SERIES_POSTER_PRIORITY = ["poster.jpg", "cover.jpg", "folder.jpg", "series.jpg"]
+_MOVIE_FANART_PRIORITY = ["fanart.jpg", "backdrop.jpg", "background.jpg"]
+_SERIES_FANART_PRIORITY = ["fanart.jpg", "backdrop.jpg", "background.jpg"]
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".svg"}
 
 
@@ -24,10 +26,16 @@ class PosterResolver:
             for root in settings.poster_allowed_roots.split(",")
             if root.strip()
         ]
-        self._cache: dict[tuple[str, str], Path] = {}
+        self._cache: dict[tuple[str, str, str], Path] = {}
         self._lock = Lock()
 
-    def resolve(self, file_path: str | None, media_type: MediaType | str | None) -> Path:
+    def resolve(
+        self,
+        file_path: str | None,
+        media_type: MediaType | str | None,
+        *,
+        variant: str = "poster",
+    ) -> Path:
         if not file_path:
             return self.placeholder
 
@@ -36,7 +44,8 @@ class PosterResolver:
             return self.placeholder
 
         inferred_media_type = self._normalize_media_type(media_type, file)
-        cache_key = (inferred_media_type.value, str(file))
+        safe_variant = variant if variant in {"poster", "fanart"} else "poster"
+        cache_key = (inferred_media_type.value, str(file), safe_variant)
 
         with self._lock:
             cached = self._cache.get(cache_key)
@@ -44,20 +53,21 @@ class PosterResolver:
             return cached
 
         if inferred_media_type == MediaType.EPISODE:
-            resolved = self.resolve_series_poster(file)
+            resolved = self.resolve_series_image(file, variant=safe_variant)
         else:
-            resolved = self.resolve_movie_poster(file)
+            resolved = self.resolve_movie_image(file, variant=safe_variant)
 
         with self._lock:
             self._cache[cache_key] = resolved
         return resolved
 
-    def resolve_movie_poster(self, media_file: Path) -> Path:
+    def resolve_movie_image(self, media_file: Path, *, variant: str) -> Path:
         directory = media_file.parent
         if not directory.exists():
             return self.placeholder
 
-        for name in _MOVIE_PRIORITY:
+        priority = _MOVIE_FANART_PRIORITY if variant == "fanart" else _MOVIE_POSTER_PRIORITY
+        for name in priority:
             candidate = directory / name
             if self._is_valid_image(candidate):
                 return candidate
@@ -68,12 +78,13 @@ class PosterResolver:
 
         return self.placeholder
 
-    def resolve_series_poster(self, media_file: Path) -> Path:
+    def resolve_series_image(self, media_file: Path, *, variant: str) -> Path:
         series_root = self._get_series_root(media_file)
         if series_root is None or not series_root.exists():
             return self.placeholder
 
-        for name in _SERIES_PRIORITY:
+        priority = _SERIES_FANART_PRIORITY if variant == "fanart" else _SERIES_POSTER_PRIORITY
+        for name in priority:
             candidate = series_root / name
             if self._is_valid_image(candidate):
                 return candidate
