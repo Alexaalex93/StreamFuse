@@ -92,7 +92,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     >
       <div className="relative h-[220px]">
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-55"
+          className="absolute inset-0 bg-no-repeat bg-contain bg-center opacity-55"
           style={{ backgroundImage: `url(${fanartSrc})` }}
           aria-hidden
         />
@@ -104,7 +104,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
             <img
               src={posterSrc}
               alt={session.title || "Poster"}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
               onError={(event) => {
                 event.currentTarget.src = FALLBACK_POSTER;
               }}
@@ -146,7 +146,6 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
         <div className="mt-3 flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[1rem] font-semibold text-white">{session.title || session.file_name || "Untitled"}</p>
-            <p className="truncate text-sm text-fg-muted">{session.series_title || session.media_type}</p>
           </div>
           <p className="shrink-0 text-sm text-fg-muted">{session.user_name}</p>
         </div>
@@ -154,3 +153,4 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     </article>
   );
 }
+
