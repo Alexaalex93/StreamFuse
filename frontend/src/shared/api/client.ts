@@ -1,4 +1,30 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
+function resolveApiBase(): string {
+  const raw = import.meta.env.VITE_API_BASE ?? "/api/v1";
+
+  if (!/^https?:\/\//.test(raw)) {
+    return raw;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    const isLocalHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+    if (!isLocalHost) {
+      return raw;
+    }
+
+    const browserHost = window.location.hostname;
+    if (!browserHost) {
+      return raw;
+    }
+
+    parsed.hostname = browserHost;
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return raw;
+  }
+}
+
+const API_BASE = resolveApiBase();
 
 export function getApiBase(): string {
   return API_BASE;
