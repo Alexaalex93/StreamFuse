@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import dashboard, unified_sessions
 from app.api.v1.routers import (
@@ -13,9 +14,23 @@ from app.api.v1.routers import (
 from app.core.config import get_settings
 
 
+def _parse_cors_origins(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 def create_app() -> FastAPI:
     app_settings = get_settings()
     app = FastAPI(title="StreamFuse API", version="0.1.0", debug=app_settings.debug)
+
+    cors_origins = _parse_cors_origins(app_settings.cors_origins)
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     app.include_router(health.router, prefix="/api", tags=["health"])
     app.include_router(unified_sessions.router, prefix="/api/sessions", tags=["sessions"])
