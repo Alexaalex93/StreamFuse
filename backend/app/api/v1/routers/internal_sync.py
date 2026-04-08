@@ -1,6 +1,6 @@
 ﻿import asyncio
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.adapters.sftpgo.client import SFTPGoClient, SFTPGoHTTPProvider, SFTPGoMockProvider
@@ -70,9 +70,13 @@ async def poll_sftpgo(
         poster_resolver=PosterResolver(settings),
         stale_seconds=settings.sftpgo_stale_seconds,
     )
-
-    result = await sync_service.poll_once(log_limit=settings.sftpgo_log_limit)
+    try:
+        result = await sync_service.poll_once(log_limit=settings.sftpgo_log_limit)
+    except Exception as exc:
+        detail = str(exc)
+        raise HTTPException(status_code=502, detail=f"SFTPGo poll failed: {detail}") from exc
     return {
         **result,
         "used_mock": mock_enabled,
     }
+

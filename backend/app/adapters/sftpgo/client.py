@@ -25,7 +25,6 @@ class SFTPGoHTTPProvider(SFTPGoProvider):
 
     async def fetch_active_connections(self) -> list[SFTPGoRawConnection]:
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "X-SFTPGO-API-KEY": self.api_key,
         }
 
@@ -103,3 +102,4 @@ class SFTPGoClient:
 
     async def fetch_activity(self) -> list[dict]:
         return await self.fetch_active_connections()
+
