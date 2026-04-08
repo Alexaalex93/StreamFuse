@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 
 import { UnifiedSession } from "@/types/session";
 
@@ -10,7 +10,7 @@ import { BandwidthBadge } from "./BandwidthBadge";
 import { ProgressBar } from "./ProgressBar";
 
 const FALLBACK_POSTER =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='480' height='300'><rect width='100%25' height='100%25' fill='%23111b2f'/><text x='50%25' y='50%25' fill='%2394a3b8' font-size='18' text-anchor='middle' dominant-baseline='middle'>No poster</text></svg>";
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect width='100%25' height='100%25' fill='%23111b2f'/><text x='50%25' y='50%25' fill='%2394a3b8' font-size='18' text-anchor='middle' dominant-baseline='middle'>No poster</text></svg>";
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -91,11 +91,11 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
             </div>
 
             <div className="overflow-y-auto pr-1">
-              <div className="overflow-hidden rounded-2xl border border-white/10">
+              <div className="mx-auto w-fit overflow-hidden rounded-2xl border border-white/10 bg-[#060d1a] shadow-lg">
                 <img
                   src={posterSrc}
                   alt={session.title || "session poster"}
-                  className="h-56 w-full object-cover"
+                  className="h-72 w-48 object-cover"
                   onError={(event) => {
                     event.currentTarget.src = FALLBACK_POSTER;
                   }}
