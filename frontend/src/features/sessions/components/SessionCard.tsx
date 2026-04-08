@@ -18,31 +18,32 @@ function summarizePath(path: string | null): string {
     return "n/a";
   }
   const normalized = path.replace(/\\/g, "/");
-  if (normalized.length <= 44) {
+  if (normalized.length <= 36) {
     return normalized;
   }
-  return `...${normalized.slice(-44)}`;
+  return `...${normalized.slice(-36)}`;
 }
 
-function fmtDuration(ms: number | null): string {
-  if (!ms || ms <= 0) {
-    return "--:--";
+function formatEpisode(session: UnifiedSession): string {
+  const hasSeason = session.season_number != null;
+  const hasEpisode = session.episode_number != null;
+  if (!hasSeason && !hasEpisode) {
+    return session.media_type;
   }
-  const total = Math.floor(ms / 1000);
-  const min = Math.floor(total / 60);
-  const sec = total % 60;
-  return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  const s = hasSeason ? `S${String(session.season_number).padStart(2, "0")}` : "";
+  const e = hasEpisode ? `E${String(session.episode_number).padStart(2, "0")}` : "";
+  return `${s}${e}`;
 }
 
 export function SessionCard({ session, onOpen }: SessionCardProps) {
   const backend = getBackendBase();
-  const posterSrc = `${backend}/api/v1/posters/${session.id}?width=320&height=480`;
-  const fanartSrc = `${backend}/api/v1/posters/${session.id}?width=1280&height=720`;
+  const posterSrc = `${backend}/api/v1/posters/${session.id}?width=420&height=630`;
+  const fanartSrc = `${backend}/api/v1/posters/${session.id}?width=1400&height=788`;
   const progress = Math.max(0, Math.min(100, session.progress_percent ?? 0));
 
   return (
     <article
-      className="group overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#0b1222] shadow-premium cursor-pointer"
+      className="group overflow-hidden rounded-2xl border border-cyan-300/25 bg-[#0b1222] shadow-premium"
       onClick={() => onOpen(session)}
       role="button"
       tabIndex={0}
@@ -53,49 +54,46 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
         }
       }}
     >
-      <div className="relative h-[220px]">
+      <div className="relative h-[205px]">
         <div
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 bg-cover bg-center opacity-55"
           style={{ backgroundImage: `url(${fanartSrc})` }}
           aria-hidden
         />
-        <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-md" aria-hidden />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-900/60 to-slate-900/70" aria-hidden />
+        <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/88 via-slate-900/48 to-slate-900/66" aria-hidden />
 
-        <div className="relative flex h-full gap-4 p-3">
-          <img
-            src={posterSrc}
-            alt={session.title || "Poster"}
-            className="h-full w-[92px] rounded-lg border border-white/25 object-cover shadow-lg"
-            onError={(event) => {
-              event.currentTarget.src = FALLBACK_POSTER;
-            }}
-          />
+        <div className="relative flex h-full gap-3 p-3">
+          <div className="flex h-full w-[102px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-black/35 shadow-lg">
+            <img
+              src={posterSrc}
+              alt={session.title || "Poster"}
+              className="h-full w-full object-contain"
+              onError={(event) => {
+                event.currentTarget.src = FALLBACK_POSTER;
+              }}
+            />
+          </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-[1.05rem] font-semibold text-white">{session.title || session.file_name || "Untitled"}</p>
-                <p className="text-sm text-fg-muted">{session.user_name}</p>
-              </div>
+            <div className="mb-2 flex justify-end">
               <SourceBadge source={session.source} />
             </div>
 
-            <div className="mt-2 grid grid-cols-[78px_1fr] gap-x-2 gap-y-1 text-sm text-fg-muted">
-              <span className="text-fg-muted/80">TYPE</span><span>{session.media_type}</span>
-              <span className="text-fg-muted/80">START</span><span>{formatLocalTime(session.started_at)}</span>
-              <span className="text-fg-muted/80">PLAYER</span><span className="truncate">{session.player_name || session.client_name || "n/a"}</span>
-              <span className="text-fg-muted/80">QUALITY</span><span>{session.resolution || "n/a"}</span>
-              <span className="text-fg-muted/80">STREAM</span><span>{session.transcode_decision || "n/a"}</span>
-              <span className="text-fg-muted/80">IP</span><span className="truncate">{session.ip_address || "n/a"}</span>
-              <span className="text-fg-muted/80">PATH</span><span className="truncate">{summarizePath(session.file_path)}</span>
+            <div className="grid grid-cols-[78px_1fr] gap-x-2 gap-y-1 text-[0.95rem] leading-5 text-fg-muted">
+              <span className="text-fg-muted/85">TYPE</span><span className="truncate">{formatEpisode(session)}</span>
+              <span className="text-fg-muted/85">START</span><span>{formatLocalTime(session.started_at)}</span>
+              <span className="text-fg-muted/85">PLAYER</span><span className="truncate">{session.player_name || session.client_name || "n/a"}</span>
+              <span className="text-fg-muted/85">QUALITY</span><span>{session.resolution || "n/a"}</span>
+              <span className="text-fg-muted/85">STREAM</span><span className="truncate">{session.transcode_decision || "n/a"}</span>
+              <span className="text-fg-muted/85">IP</span><span className="truncate">{session.ip_address || "n/a"}</span>
+              <span className="text-fg-muted/85">PATH</span><span className="truncate">{summarizePath(session.file_path)}</span>
             </div>
 
             <div className="mt-2 flex items-center justify-between gap-2">
               <BandwidthBadge bandwidthBps={session.bandwidth_bps} text={session.bandwidth_human} />
               <span className="text-xs text-fg-muted">{progress.toFixed(0)}%</span>
             </div>
-
             <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/15">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400"
@@ -111,16 +109,9 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[1rem] font-semibold text-white">{session.title || session.file_name || "Untitled"}</p>
-            <p className="truncate text-sm text-fg-muted">
-              {session.series_title ? `${session.series_title} · ` : ""}
-              {session.season_number != null ? `S${String(session.season_number).padStart(2, "0")}` : ""}
-              {session.episode_number != null ? `E${String(session.episode_number).padStart(2, "0")}` : ""}
-            </p>
+            <p className="truncate text-sm text-fg-muted">{session.series_title || session.media_type}</p>
           </div>
-          <div className="text-right text-xs text-fg-muted">
-            <p>{session.user_name}</p>
-            <p>{fmtDuration(session.duration_ms)}</p>
-          </div>
+          <p className="shrink-0 text-sm text-fg-muted">{session.user_name}</p>
         </div>
       </div>
     </article>
