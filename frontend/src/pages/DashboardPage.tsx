@@ -99,7 +99,7 @@ export function DashboardPage() {
   useEffect(() => {
     const id = window.setInterval(() => {
       void fetchData();
-    }, 15000);
+    }, 1000);
 
     return () => {
       window.clearInterval(id);
@@ -237,3 +237,4 @@ export function DashboardPage() {
     </>
   );
 }
+
