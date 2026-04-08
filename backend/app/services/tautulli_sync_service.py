@@ -1,9 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from app.adapters.tautulli.client import TautulliClient
 from app.adapters.tautulli.mapper import map_tautulli_payload
+from app.domain.enums import StreamSource
 from app.services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
@@ -17,13 +19,25 @@ class TautulliSyncService:
     async def import_active_sessions(self) -> int:
         rows = await self.client.fetch_active_sessions()
         imported = 0
+        active_ids: set[str] = set()
+
         for payload in rows:
             try:
                 mapped = map_tautulli_payload(payload, historical=False)
                 self.session_service.create_session(mapped)
+                active_ids.add(mapped.source_session_id)
                 imported += 1
             except Exception:
                 logger.exception("Failed to map/store Tautulli active payload")
+
+        stale_marked = self.session_service.repository.mark_missing_active_for_source(
+            source=StreamSource.TAUTULLI,
+            active_source_session_ids=active_ids,
+            ended_at=datetime.now(timezone.utc),
+        )
+        if stale_marked:
+            logger.info("Marked %s stale Tautulli sessions", stale_marked)
+
         return imported
 
     async def import_history(self, length: int = 100) -> int:

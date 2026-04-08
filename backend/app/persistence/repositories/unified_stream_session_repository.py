@@ -84,6 +84,30 @@ class UnifiedStreamSessionRepository:
             self.db.commit()
         return len(rows)
 
+    def mark_missing_active_for_source(
+        self,
+        *,
+        source: StreamSource,
+        active_source_session_ids: set[str],
+        ended_at: datetime,
+    ) -> int:
+        rows = self.list_active_by_source(source)
+        changed = 0
+
+        for row in rows:
+            if row.source_session_id in active_source_session_ids:
+                continue
+            row.status = SessionStatus.ENDED
+            row.ended_at = ended_at
+            raw_payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
+            raw_payload["lifecycle"] = "source_missing"
+            row.raw_payload = raw_payload
+            changed += 1
+
+        if changed:
+            self.db.commit()
+        return changed
+
     def create(self, payload: UnifiedStreamSessionCreate) -> UnifiedStreamSessionModel:
         existing = self.db.scalar(
             select(UnifiedStreamSessionModel).where(

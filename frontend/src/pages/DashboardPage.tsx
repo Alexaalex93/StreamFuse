@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
@@ -56,11 +56,21 @@ export function DashboardPage() {
   const [userQuery, setUserQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | StreamSource>("all");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | MediaType>("all");
+  const lastSyncRef = useRef<number>(0);
 
   const fetchData = async () => {
     try {
       setError(null);
       const backend = getBackendBase();
+
+      const now = Date.now();
+      if (now - lastSyncRef.current >= 5000) {
+        lastSyncRef.current = now;
+        await Promise.allSettled([
+          fetch(`${backend}/api/v1/internal/tautulli/import?include_history=false`, { method: "POST" }),
+          fetch(`${backend}/api/v1/internal/sftpgo/poll`, { method: "POST" }),
+        ]);
+      }
 
       const activeQuery = buildQuery({
         user_name: userQuery || undefined,
@@ -237,4 +247,3 @@ export function DashboardPage() {
     </>
   );
 }
-
