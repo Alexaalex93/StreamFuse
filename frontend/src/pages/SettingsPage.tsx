@@ -80,6 +80,12 @@ function validateForm(form: SettingsFormState): string | null {
 
 const inputClass =
   "w-full rounded-lg border border-white/15 bg-white/[0.03] px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted/70 focus:border-primary/60 focus:ring-2 focus:ring-primary/30";
+const selectClass =
+  "w-full rounded-lg border border-white/15 bg-slate-900 px-3 py-2 text-sm text-white outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/30";
+const selectOptionStyle = {
+  backgroundColor: "#0b1930",
+  color: "#e6f2ff",
+};
 const labelClass = "mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-fg-muted";
 
 export function SettingsPage() {
@@ -384,13 +390,13 @@ export function SettingsPage() {
               <label className={labelClass} htmlFor="detected-user">Detected user</label>
               <select
                 id="detected-user"
-                className={inputClass}
+                className={selectClass}
                 value={selectedDetectedUser}
                 onChange={(event) => setSelectedDetectedUser(event.target.value)}
               >
-                {detectedUsers.length === 0 ? <option value="">No users detected yet</option> : null}
+                {detectedUsers.length === 0 ? <option value="" style={selectOptionStyle}>No users detected yet</option> : null}
                 {detectedUsers.map((user) => (
-                  <option key={user.user_name} value={user.user_name}>
+                  <option key={user.user_name} value={user.user_name} style={selectOptionStyle}>
                     {user.user_name} ({user.session_count})
                   </option>
                 ))}

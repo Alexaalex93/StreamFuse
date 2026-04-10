@@ -95,6 +95,19 @@ function dedupeTransferSessions(sessions: UnifiedSession[]): UnifiedSession[] {
   return Array.from(byKey.values());
 }
 
+function buildStableSessionKey(session: UnifiedSession): string {
+  if (session.source === "sftpgo" || session.source === "samba") {
+    const filePath = (session.file_path || "").trim().toLowerCase();
+    const ip = normalizeIpAddress(session.ip_address).toLowerCase();
+    const user = (session.user_name || "").trim().toLowerCase();
+    if (filePath && ip && user) {
+      return `${session.source}-${user}-${ip}-${filePath}`;
+    }
+  }
+
+  return `${session.source}-${session.source_session_id}`;
+}
+
 export function DashboardPage() {
   const [activeSessions, setActiveSessions] = useState<UnifiedSession[]>([]);
   const [recentSessions, setRecentSessions] = useState<UnifiedSession[]>([]);
@@ -108,34 +121,28 @@ export function DashboardPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | StreamSource>("all");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | MediaType>("all");
 
-  const orderByUserRef = useRef<Map<string, number>>(new Map());
+  const orderBySessionRef = useRef<Map<string, number>>(new Map());
   const nextOrderIndexRef = useRef(0);
 
   const orderActiveSessionsStable = (sessions: UnifiedSession[]): UnifiedSession[] => {
     for (const session of sessions) {
-      const userKey = (session.user_name || "unknown").trim().toLowerCase();
-      if (!orderByUserRef.current.has(userKey)) {
-        orderByUserRef.current.set(userKey, nextOrderIndexRef.current);
+      const sessionKey = buildStableSessionKey(session);
+      if (!orderBySessionRef.current.has(sessionKey)) {
+        orderBySessionRef.current.set(sessionKey, nextOrderIndexRef.current);
         nextOrderIndexRef.current += 1;
       }
     }
 
     return [...sessions].sort((a, b) => {
-      const keyA = (a.user_name || "unknown").trim().toLowerCase();
-      const keyB = (b.user_name || "unknown").trim().toLowerCase();
-      const orderA = orderByUserRef.current.get(keyA) ?? Number.MAX_SAFE_INTEGER;
-      const orderB = orderByUserRef.current.get(keyB) ?? Number.MAX_SAFE_INTEGER;
+      const keyA = buildStableSessionKey(a);
+      const keyB = buildStableSessionKey(b);
+      const orderA = orderBySessionRef.current.get(keyA) ?? Number.MAX_SAFE_INTEGER;
+      const orderB = orderBySessionRef.current.get(keyB) ?? Number.MAX_SAFE_INTEGER;
       if (orderA !== orderB) {
         return orderA - orderB;
       }
 
-      const tsA = Date.parse(a.updated_at || "") || 0;
-      const tsB = Date.parse(b.updated_at || "") || 0;
-      if (tsA !== tsB) {
-        return tsB - tsA;
-      }
-
-      return `${a.source}-${a.source_session_id}`.localeCompare(`${b.source}-${b.source_session_id}`);
+      return keyA.localeCompare(keyB);
     });
   };
 
@@ -224,6 +231,7 @@ export function DashboardPage() {
     const totalBandwidth = activeSessions.reduce((sum, session) => sum + (session.bandwidth_bps ?? 0), 0);
     const tautulliCount = activeSessions.filter((session) => session.source === "tautulli").length;
     const sftpgoCount = activeSessions.filter((session) => session.source === "sftpgo").length;
+    const sambaCount = activeSessions.filter((session) => session.source === "samba").length;
 
     return {
       sessionsActive,
@@ -231,6 +239,7 @@ export function DashboardPage() {
       totalBandwidth,
       tautulliCount,
       sftpgoCount,
+      sambaCount,
     };
   }, [activeSessions]);
 
@@ -259,12 +268,13 @@ export function DashboardPage() {
           <p className="text-sm text-fg-muted">Live monitoring of active sessions and recent activity.</p>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7">
           <StatCard label="Active Sessions" value={String(derived.sessionsActive)} hint="Live right now" />
           <StatCard label="Active Users" value={String(derived.usersActive)} hint="Unique users" />
           <StatCard label="Total Bandwidth" value={formatBandwidth(derived.totalBandwidth)} hint="Aggregated live" />
           <StatCard label="Tautulli Sessions" value={String(derived.tautulliCount)} hint="Playback sessions" />
           <StatCard label="SFTPGo Sessions" value={String(derived.sftpgoCount)} hint="Transfer sessions" />
+          <StatCard label="Samba Sessions" value={String(derived.sambaCount)} hint="SMB sessions" />
           <StatCard label="Total Shared" value={totalSharedHuman} hint="Cumulative transferred" />
         </section>
 
@@ -282,7 +292,7 @@ export function DashboardPage() {
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <h2 className="font-display text-2xl text-white">Active Sessions Grid</h2>
-              <p className="text-sm text-fg-muted">All current activity from Tautulli and SFTPGo, unified but source-safe.</p>
+              <p className="text-sm text-fg-muted">All current activity from Tautulli, SFTPGo and Samba, unified but source-safe.</p>
             </div>
             <p className="text-xs uppercase tracking-[0.14em] text-fg-muted">
               {lastUpdated ? `Refreshed ${relativeFromNow(lastUpdated.toISOString())}` : "Waiting..."}
@@ -351,4 +361,3 @@ export function DashboardPage() {
     </>
   );
 }
-
