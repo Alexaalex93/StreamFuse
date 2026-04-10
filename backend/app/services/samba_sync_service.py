@@ -326,22 +326,34 @@ def _episode_code(season_number: int | None, episode_number: int | None) -> str:
     return f"{s}{e}"
 
 
+def _strip_episode_prefixes(episode_text: str, series_text: str, code: str) -> str:
+    value = episode_text
+    if series_text and value.lower().startswith(series_text.lower()):
+        value = value[len(series_text):].lstrip(" -:|.")
+    if code and value.upper().startswith(code.upper()):
+        value = value[len(code):].lstrip(" -:|.")
+    if series_text and value.lower().startswith(series_text.lower()):
+        value = value[len(series_text):].lstrip(" -:|.")
+    return value.strip()
+
+
 def _format_episode_title(series_title: str | None, episode_title: str | None, season_number: int | None, episode_number: int | None) -> str:
     clean_series = _clean_display_text(series_title)
     clean_episode = _clean_display_text(episode_title)
     code = _episode_code(season_number, episode_number)
+    episode_only = _strip_episode_prefixes(clean_episode, clean_series, code) if clean_episode else ""
 
     parts: list[str] = []
     if clean_series:
         parts.append(clean_series)
     if code:
         parts.append(code)
-    if clean_episode and clean_episode != clean_series:
-        parts.append(clean_episode)
+    if episode_only and episode_only.lower() != clean_series.lower() and episode_only.upper() != code.upper():
+        parts.append(episode_only)
 
     if parts:
         return " - ".join(parts)
-    return clean_episode or clean_series or "Untitled"
+    return episode_only or clean_episode or clean_series or "Untitled"
 
 
 def _to_datetime(value: Any) -> datetime | None:
@@ -385,6 +397,7 @@ def _format_bps(bps: int | None) -> str | None:
     if mbps >= 1:
         return f"{mbps:.1f} Mbps"
     return f"{(bps / 1000):.1f} Kbps"
+
 
 
 
