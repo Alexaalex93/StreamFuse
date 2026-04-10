@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
+import { OverviewStats } from "@/types/stats";
 
 import { getBackendBase } from "@/shared/api/client";
 import { relativeFromNow } from "@/shared/lib/date";
@@ -101,6 +102,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [totalSharedHuman, setTotalSharedHuman] = useState<string>("0 B");
 
   const [userQuery, setUserQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | StreamSource>("all");
@@ -123,15 +125,21 @@ export function DashboardPage() {
       const activeData = (await activeResponse.json()) as UnifiedSession[];
 
       const historyResponse = await fetch(`${backend}/api/sessions/history?limit=8`);
+      const overviewResponse = await fetch(`${backend}/api/stats/overview`);
       if (!historyResponse.ok) {
         throw new Error(`History failed (${historyResponse.status})`);
       }
+      if (!overviewResponse.ok) {
+        throw new Error(`Stats overview failed (${overviewResponse.status})`);
+      }
       const historyData = (await historyResponse.json()) as UnifiedSession[];
+      const overviewData = (await overviewResponse.json()) as OverviewStats;
 
       const dedupedActive = dedupeSftpgoSessions(activeData);
 
       setActiveSessions(dedupedActive);
       setRecentSessions(historyData);
+      setTotalSharedHuman(overviewData.total_shared_human || "0 B");
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
@@ -190,13 +198,14 @@ export function DashboardPage() {
 
   return (
     <>
-      <div className="space-y-6">
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="space-y-6 min-h-[760px]">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
           <StatCard label="Active Sessions" value={String(derived.sessionsActive)} hint="Live right now" />
           <StatCard label="Active Users" value={String(derived.usersActive)} hint="Unique users" />
           <StatCard label="Total Bandwidth" value={formatBandwidth(derived.totalBandwidth)} hint="Aggregated live" />
           <StatCard label="Tautulli Sessions" value={String(derived.tautulliCount)} hint="Playback sessions" />
           <StatCard label="SFTPGo Sessions" value={String(derived.sftpgoCount)} hint="Transfer sessions" />
+          <StatCard label="Total Shared" value={totalSharedHuman} hint="Cumulative transferred" />
         </section>
 
         <FilterPanel
@@ -263,10 +272,10 @@ export function DashboardPage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium text-white">{session.title || session.file_name || "Untitled"}</p>
                     <p className="text-xs text-fg-muted">
-                      {session.user_name} · {session.ip_address || "n/a"}
+                      {session.user_name} - {session.ip_address || "n/a"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="grid w-[112px] justify-items-center gap-1">
                     <SourceBadge source={session.source} />
                     <span className="text-xs text-fg-muted">{relativeFromNow(session.updated_at)}</span>
                   </div>
@@ -286,3 +295,7 @@ export function DashboardPage() {
     </>
   );
 }
+
+
+
+

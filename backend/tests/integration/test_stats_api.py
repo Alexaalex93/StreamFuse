@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -122,7 +122,13 @@ def test_stats_endpoints_for_dashboard() -> None:
         assert overview_json["ended_sessions"] == 2
         assert overview_json["stale_sessions"] >= 1
         assert len(overview_json["sessions_by_day"]) >= 2
+        assert len(overview_json["sessions_by_month"]) >= 1
+        assert len(overview_json["sessions_by_year"]) >= 1
         assert len(overview_json["bandwidth_by_day"]) >= 2
+        assert len(overview_json["bandwidth_by_month"]) >= 1
+        assert len(overview_json["bandwidth_by_year"]) >= 1
+        assert overview_json["total_shared_bytes"] >= 0
+        assert isinstance(overview_json["total_shared_human"], str)
         assert {item["source"] for item in overview_json["source_distribution"]} == {"tautulli", "sftpgo"}
         assert len(overview_json["active_by_source"]) >= 1
 
@@ -175,3 +181,4 @@ def test_stats_filters_by_date_range() -> None:
         assert data["total_sessions"] < 4
     finally:
         app.dependency_overrides.clear()
+

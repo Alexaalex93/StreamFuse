@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { OverviewStats, MediaStatsResponse, UsersStatsResponse } from "@/types/stats";
 
@@ -27,6 +27,15 @@ function shortDate(value: string): string {
     return value;
   }
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function monthLabel(value: string): string {
+  const [year, month] = value.split("-");
+  if (!year || !month) {
+    return value;
+  }
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
 }
 
 function fmtInt(value: number): string {
@@ -70,13 +79,29 @@ export function StatsPage() {
       return null;
     }
 
-    const sessionsLine = overview.sessions_by_day.map((point) => ({
+    const sessionsDay = overview.sessions_by_day.map((point) => ({
       label: shortDate(point.day),
       value: point.sessions,
     }));
+    const sessionsMonth = overview.sessions_by_month.map((point) => ({
+      label: monthLabel(point.day),
+      value: point.sessions,
+    }));
+    const sessionsYear = overview.sessions_by_year.map((point) => ({
+      label: point.day,
+      value: point.sessions,
+    }));
 
-    const bandwidthLine = overview.bandwidth_by_day.map((point) => ({
+    const bandwidthDay = overview.bandwidth_by_day.map((point) => ({
       label: shortDate(point.day),
+      value: point.avg_bandwidth_bps,
+    }));
+    const bandwidthMonth = overview.bandwidth_by_month.map((point) => ({
+      label: monthLabel(point.day),
+      value: point.avg_bandwidth_bps,
+    }));
+    const bandwidthYear = overview.bandwidth_by_year.map((point) => ({
+      label: point.day,
       value: point.avg_bandwidth_bps,
     }));
 
@@ -92,8 +117,12 @@ export function StatsPage() {
     }));
 
     return {
-      sessionsLine,
-      bandwidthLine,
+      sessionsDay,
+      sessionsMonth,
+      sessionsYear,
+      bandwidthDay,
+      bandwidthMonth,
+      bandwidthYear,
       sourceSlices,
       topUsers: users.items.map((item) => ({
         label: item.user_name,
@@ -114,7 +143,7 @@ export function StatsPage() {
   }, [overview, users, media]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-h-[760px]">
       <header>
         <h2 className="font-display text-3xl text-white">Stats</h2>
         <p className="text-sm text-fg-muted">Beautiful, readable analytics for daily media operations.</p>
@@ -126,20 +155,35 @@ export function StatsPage() {
 
       {!loading && !error && charts && overview ? (
         <>
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <StatCard label="Total Sessions" value={fmtInt(overview.total_sessions)} hint="Selected range" />
             <StatCard label="Active Now" value={fmtInt(overview.active_sessions)} hint="Live sessions" />
             <StatCard label="Ended" value={fmtInt(overview.ended_sessions)} hint="Completed sessions" />
             <StatCard label="Stale" value={fmtInt(overview.stale_sessions)} hint="Recovered inactive sessions" />
+            <StatCard label="Total Shared" value={overview.total_shared_human} hint="Cumulative transferred" />
           </section>
 
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <ChartCard title="Sessions by Day" subtitle="Volume trend">
-              <LineChart points={charts.sessionsLine} valueFormatter={(value) => `${Math.round(value)} sessions`} />
+              <LineChart points={charts.sessionsDay} valueFormatter={(value) => `${Math.round(value)} sessions`} />
             </ChartCard>
+            <ChartCard title="Sessions by Month" subtitle="Long-term trend">
+              <LineChart points={charts.sessionsMonth} valueFormatter={(value) => `${Math.round(value)} sessions`} />
+            </ChartCard>
+            <ChartCard title="Sessions by Year" subtitle="Annual trend">
+              <LineChart points={charts.sessionsYear} valueFormatter={(value) => `${Math.round(value)} sessions`} />
+            </ChartCard>
+          </section>
 
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <ChartCard title="Bandwidth by Day" subtitle="Average daily throughput">
-              <LineChart points={charts.bandwidthLine} valueFormatter={formatBps} lineColorClass="stroke-emerald-300" />
+              <LineChart points={charts.bandwidthDay} valueFormatter={formatBps} lineColorClass="stroke-emerald-300" />
+            </ChartCard>
+            <ChartCard title="Bandwidth by Month" subtitle="Average monthly throughput">
+              <LineChart points={charts.bandwidthMonth} valueFormatter={formatBps} lineColorClass="stroke-emerald-300" />
+            </ChartCard>
+            <ChartCard title="Bandwidth by Year" subtitle="Average yearly throughput">
+              <LineChart points={charts.bandwidthYear} valueFormatter={formatBps} lineColorClass="stroke-emerald-300" />
             </ChartCard>
           </section>
 

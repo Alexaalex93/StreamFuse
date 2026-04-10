@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
@@ -135,7 +135,7 @@ export function HistoryPage() {
   }, [text, userName, source, mediaType, dateFrom, dateTo]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-h-[760px]">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-display text-3xl text-white">History</h2>
@@ -217,7 +217,7 @@ export function HistoryPage() {
                   <div className="mt-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-white">{session.title || session.file_name || "Untitled"}</p>
-                      <p className="text-xs text-fg-muted">{session.user_name} Â· {formatDate(session.updated_at)}</p>
+                      <p className="text-xs text-fg-muted">{session.user_name} · {formatDate(session.updated_at)}</p>
                     </div>
                     <SourceBadge source={session.source} />
                   </div>
@@ -230,7 +230,7 @@ export function HistoryPage() {
           {!loading && !error && filteredRows.length > 0 ? (
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-card px-4 py-3">
               <p className="text-sm text-fg-muted">
-                Page {currentPage} / {totalPages} Â· {filteredRows.length} results
+                Page {currentPage} / {totalPages} · {filteredRows.length} results
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1}>
@@ -251,3 +251,4 @@ export function HistoryPage() {
     </div>
   );
 }
+

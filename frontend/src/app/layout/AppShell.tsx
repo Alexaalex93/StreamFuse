@@ -1,4 +1,4 @@
-﻿import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppSection } from "@/app/App";
 import { StreamFuseLogo } from "@/shared/branding/StreamFuseLogo";
@@ -151,9 +151,10 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
+          <main className="flex-1 px-4 py-6 md:px-8"><div className="min-h-[calc(100vh-180px)]">{children}</div></main>
         </div>
       </div>
     </div>
   );
 }
+

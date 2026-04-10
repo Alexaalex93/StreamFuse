@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -23,8 +23,14 @@ class OverviewStatsResponse(BaseModel):
     active_sessions: int
     ended_sessions: int
     stale_sessions: int
+    total_shared_bytes: int
+    total_shared_human: str
     sessions_by_day: list[DailySessionsPoint]
+    sessions_by_month: list[DailySessionsPoint]
+    sessions_by_year: list[DailySessionsPoint]
     bandwidth_by_day: list[DailyBandwidthPoint]
+    bandwidth_by_month: list[DailyBandwidthPoint]
+    bandwidth_by_year: list[DailyBandwidthPoint]
     source_distribution: list[SourceCount]
     active_by_source: list[SourceCount]
 

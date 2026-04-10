@@ -1,4 +1,4 @@
-﻿import { Fragment } from "react";
+import { Fragment } from "react";
 
 import { UnifiedSession } from "@/types/session";
 
@@ -29,6 +29,38 @@ function shortPath(path: string | null): string {
   return normalized.length > 52 ? `...${normalized.slice(-52)}` : normalized;
 }
 
+function extractBitrateText(session: UnifiedSession): string {
+  const raw = session.raw_payload;
+  if (raw && typeof raw === "object") {
+    const map = raw as Record<string, unknown>;
+    const mediaInfo = map.media_info as Record<string, unknown> | undefined;
+
+    const bpsFromMedia =
+      typeof mediaInfo?.video_bitrate_bps === "number"
+        ? mediaInfo.video_bitrate_bps
+        : typeof mediaInfo?.overall_bitrate_bps === "number"
+          ? mediaInfo.overall_bitrate_bps
+          : null;
+
+    if (typeof bpsFromMedia === "number" && bpsFromMedia > 0) {
+      return `${Math.round(bpsFromMedia / 1_000_000)} Mbps`;
+    }
+
+    const kbps =
+      typeof map.stream_bitrate === "number"
+        ? map.stream_bitrate
+        : typeof map.bitrate === "number"
+          ? map.bitrate
+          : null;
+
+    if (typeof kbps === "number" && kbps > 0) {
+      return `${Math.round(kbps / 1000)} Mbps`;
+    }
+  }
+
+  return session.bandwidth_human || "n/a";
+}
+
 export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-premium">
@@ -47,6 +79,7 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
         <tbody>
           {sessions.map((session) => {
             const expanded = session.id === expandedId;
+            const bitrateText = extractBitrateText(session);
             return (
               <Fragment key={session.id}>
                 <tr className="border-t border-white/10 align-top">
@@ -60,7 +93,7 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                   <td className="px-4 py-3"><SourceBadge source={session.source} /></td>
                   <td className="px-4 py-3 text-fg-muted">{session.media_type}</td>
                   <td className="px-4 py-3 text-fg-muted">{fmt(session.ended_at || session.updated_at)}</td>
-                  <td className="px-4 py-3"><BandwidthBadge bandwidthBps={session.bandwidth_bps} text={session.bandwidth_human} /></td>
+                  <td className="px-4 py-3"><BandwidthBadge bandwidthBps={session.bandwidth_bps} text={bitrateText} /></td>
                   <td className="px-4 py-3">
                     <button
                       type="button"
@@ -74,9 +107,14 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                 {expanded ? (
                   <tr className="border-t border-white/10 bg-white/[0.01]">
                     <td colSpan={7} className="px-4 py-4">
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
-                        <PosterCard sessionId={session.id} title={session.title || "history poster"} />
-                        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs text-fg-muted">
+                      <div className="flex flex-col gap-4 md:flex-row">
+                        <PosterCard
+                          sessionId={session.id}
+                          title={session.title || "history poster"}
+                          variant="poster"
+                          className="h-[280px] w-[186px] shrink-0"
+                        />
+                        <div className="min-h-[280px] flex-1 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs text-fg-muted">
                           <div className="grid grid-cols-2 gap-2">
                             <p><span className="text-white">Started:</span> {fmt(session.started_at)}</p>
                             <p><span className="text-white">Updated:</span> {fmt(session.updated_at)}</p>
@@ -86,6 +124,7 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                             <p><span className="text-white">Transcode:</span> {session.transcode_decision || "n/a"}</p>
                             <p><span className="text-white">Video:</span> {session.video_codec || "n/a"}</p>
                             <p><span className="text-white">Audio:</span> {session.audio_codec || "n/a"}</p>
+                            <p><span className="text-white">Bandwidth:</span> {bitrateText}</p>
                           </div>
                           <p className="mt-3 break-all rounded-lg bg-white/[0.03] px-2 py-2 text-fg">{session.file_path || "n/a"}</p>
                         </div>
