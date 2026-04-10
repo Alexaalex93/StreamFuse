@@ -1,4 +1,7 @@
-﻿from fastapi import FastAPI
+import asyncio
+import logging
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import dashboard, unified_sessions
@@ -13,6 +16,9 @@ from app.api.v1.routers import (
     stats,
 )
 from app.core.config import get_settings
+from app.jobs.background_sync import BackgroundSyncRunner
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_cors_origins(raw: str) -> list[str]:
@@ -49,6 +55,34 @@ def create_app() -> FastAPI:
     app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
     app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
     app.include_router(source_health.router, prefix="/api/v1", tags=["source-health"])
+
+    @app.on_event("startup")
+    async def _startup_background_sync() -> None:
+        if not app_settings.background_sync_enabled:
+            logger.info("Background sync is disabled")
+            return
+
+        runner = BackgroundSyncRunner()
+        task = asyncio.create_task(runner.run_forever(), name="streamfuse-background-sync")
+        app.state.background_sync_runner = runner
+        app.state.background_sync_task = task
+        logger.info("Background sync task started")
+
+    @app.on_event("shutdown")
+    async def _shutdown_background_sync() -> None:
+        runner = getattr(app.state, "background_sync_runner", None)
+        task = getattr(app.state, "background_sync_task", None)
+
+        if runner is not None:
+            runner.stop()
+
+        if task is not None:
+            try:
+                await asyncio.wait_for(task, timeout=5)
+            except TimeoutError:
+                task.cancel()
+            except Exception:
+                logger.exception("Error while stopping background sync task")
 
     return app
 

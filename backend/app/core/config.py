@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     sftpgo_stale_seconds: int = 180
     sftpgo_log_limit: int = 200
 
+    background_sync_enabled: bool = True
+    background_sync_interval_seconds: int = 30
+
     poster_placeholder_path: str = "app/poster_resolver/assets/placeholder.svg"
     poster_allowed_roots: str = ""
 
