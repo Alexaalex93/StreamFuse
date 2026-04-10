@@ -4,11 +4,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate
 from app.adapters.samba.client import SambaClient
+from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate
 from app.domain.enums import SessionStatus, StreamSource
 from app.parsers.media_parser import clean_movie_title, detect_media_type, parse_series_context
 from app.parsers.mediainfo_parser import parse_mediainfo_for_media
+from app.persistence.models.unified_stream_session import UnifiedStreamSessionModel
 from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
 
@@ -56,6 +57,9 @@ class SambaSyncService:
 
     async def poll_once(self) -> dict[str, int]:
         self._rebuild_active_session_cache()
+        cleaned_duplicate_active = self._collapse_duplicate_active_sessions()
+        if cleaned_duplicate_active:
+            self._rebuild_active_session_cache()
 
         connections = await self.client.fetch_active_connections()
         grouped = self._group_download_connections(connections)
@@ -66,13 +70,15 @@ class SambaSyncService:
 
         for item in grouped:
             try:
-                logical_key = item["logical_key"]
-                source_session_id = self._resolve_session_id_for_key(logical_key)
-                seen_ids.add(source_session_id)
-
                 media_path = self._normalize_media_path_for_local_fs(item["file_path"])
                 if not media_path or not self._looks_like_media_file(media_path):
                     continue
+
+                user_name = str(item["connection"].get("username") or "unknown")
+                ip_value = _normalize_ip(str(item["connection"].get("remote_address") or ""))
+                logical_key = self._group_key(user_name, ip_value, media_path)
+                source_session_id = self._resolve_session_id_for_key(logical_key)
+                seen_ids.add(source_session_id)
 
                 media_info = parse_mediainfo_for_media(media_path)
                 poster = self.poster_resolver.resolve(media_path, None)
@@ -101,17 +107,20 @@ class SambaSyncService:
                 connection_time = _to_datetime(item["connection"].get("connection_time"))
                 started_at = start_time or connection_time or datetime.now(UTC)
 
-                bandwidth_bps = None
+                estimated_bps = None
                 if size and start_time:
                     elapsed = max((datetime.now(UTC) - start_time).total_seconds(), 1)
-                    bandwidth_bps = int(size / elapsed)
+                    estimated_bps = int(size / elapsed)
+
+                bitrate_bps = media_info.overall_bitrate_bps if media_info else None
+                bandwidth_bps = bitrate_bps or estimated_bps
 
                 payload = UnifiedStreamSessionCreate(
                     source=StreamSource.SAMBA,
                     source_session_id=source_session_id,
                     status=SessionStatus.ACTIVE,
-                    user_name=str(item["connection"].get("username") or "unknown"),
-                    ip_address=_normalize_ip(str(item["connection"].get("remote_address") or "")) or None,
+                    user_name=user_name,
+                    ip_address=ip_value or None,
                     title=title,
                     title_clean=title_clean,
                     media_type=media_type,
@@ -148,9 +157,10 @@ class SambaSyncService:
 
         return {
             "active_imported": imported,
+            "cleaned_duplicate_active": cleaned_duplicate_active,
             "stale_marked": stale_marked,
             "errors": errors,
-            "total_processed": imported + stale_marked,
+            "total_processed": imported + cleaned_duplicate_active + stale_marked,
         }
 
     def _group_download_connections(self, connections: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -174,7 +184,7 @@ class SambaSyncService:
                 if not file_path or not self._looks_like_media_file(file_path):
                     continue
 
-                key = f"{username.lower()}|{ip_value}|{file_path.lower()}"
+                key = self._group_key(username, ip_value, file_path)
                 existing = grouped.get(key)
                 if existing is None:
                     grouped[key] = {
@@ -197,18 +207,59 @@ class SambaSyncService:
 
         return list(grouped.values())
 
+    def _collapse_duplicate_active_sessions(self) -> int:
+        rows = self.session_service.repository.list_active_by_source(StreamSource.SAMBA)
+        grouped: dict[str, list[UnifiedStreamSessionModel]] = {}
+
+        for row in rows:
+            key = self._logical_key_for_row(row)
+            if not key:
+                continue
+            grouped.setdefault(key, []).append(row)
+
+        removed = 0
+        for dup_rows in grouped.values():
+            if len(dup_rows) < 2:
+                continue
+
+            sorted_rows = sorted(
+                dup_rows,
+                key=lambda item: (_to_datetime(item.updated_at) or datetime.min.replace(tzinfo=UTC), item.id),
+                reverse=True,
+            )
+            keep = sorted_rows[0]
+
+            for stale in sorted_rows[1:]:
+                self.session_service.repository.db.delete(stale)
+                removed += 1
+
+            keep_key = self._logical_key_for_row(keep)
+            if keep_key:
+                self._active_session_ids_by_key[keep_key] = keep.source_session_id
+                self._key_by_session_id[keep.source_session_id] = keep_key
+
+        if removed:
+            self.session_service.repository.db.commit()
+
+        return removed
+
+    def _logical_key_for_row(self, row: UnifiedStreamSessionModel) -> str:
+        file_path = (row.file_path or "").strip()
+        user_name = (row.user_name or "").strip()
+        ip_value = _normalize_ip(row.ip_address or "")
+        if not file_path or not user_name:
+            return ""
+        return self._group_key(user_name, ip_value, file_path)
+
     def _rebuild_active_session_cache(self) -> None:
         self._active_session_ids_by_key = {}
         self._key_by_session_id = {}
 
         rows = self.session_service.repository.list_active_by_source(StreamSource.SAMBA)
         for row in rows:
-            file_path = (row.file_path or "").strip()
-            user_name = (row.user_name or "").strip()
-            ip_value = _normalize_ip(row.ip_address or "")
-            if not file_path or not user_name:
+            key = self._logical_key_for_row(row)
+            if not key:
                 continue
-            key = f"{user_name.lower()}|{ip_value}|{file_path.lower()}"
             self._active_session_ids_by_key[key] = row.source_session_id
             self._key_by_session_id[row.source_session_id] = key
 
@@ -288,6 +339,10 @@ class SambaSyncService:
     def _looks_like_media_file(path: str) -> bool:
         normalized = path.strip().lower()
         return any(normalized.endswith(ext) for ext in _MEDIA_FILE_EXTENSIONS)
+
+    @staticmethod
+    def _group_key(username: str, ip_value: str, file_path: str) -> str:
+        return f"{username.strip().lower()}|{_normalize_ip(ip_value)}|{file_path.strip().lower()}"
 
     @staticmethod
     def _parse_path_mappings(items: list[str]) -> list[tuple[str, str]]:
@@ -408,8 +463,3 @@ def _format_bps(bps: int | None) -> str | None:
     if mbps >= 1:
         return f"{mbps:.1f} Mbps"
     return f"{(bps / 1000):.1f} Kbps"
-
-
-
-
-

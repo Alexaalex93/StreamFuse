@@ -29,6 +29,13 @@ class StreamFuseSettingsResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class DetectedUserAliasOption(BaseModel):
+    user_name: str
+    alias: str | None
+    session_count: int
+    sources: list[str]
+
+
 class StreamFuseSettingsUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -111,3 +118,4 @@ class StreamFuseSettingsUpdate(BaseModel):
                 continue
             cleaned[source] = target
         return cleaned
+
