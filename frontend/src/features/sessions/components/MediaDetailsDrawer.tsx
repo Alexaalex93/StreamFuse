@@ -83,7 +83,7 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
     if (!session) {
       return FALLBACK_POSTER;
     }
-    return `${getBackendBase()}/api/v1/posters/${session.id}?width=520&height=780`;
+    return `${getBackendBase()}/api/v1/posters/${session.id}?variant=poster&width=1000&height=1500`;
   }, [session]);
 
   return (
@@ -206,3 +206,4 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
     </>
   );
 }
+

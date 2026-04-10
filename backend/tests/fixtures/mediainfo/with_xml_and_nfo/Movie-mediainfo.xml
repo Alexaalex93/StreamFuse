@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaInfo xmlns="https://mediaarea.net/mediainfo">
+  <media ref="Movie.mkv">
+    <track type="General">
+      <Title>XML Title</Title>
+      <Duration>120.000</Duration>
+      <OverallBitRate>4000000</OverallBitRate>
+    </track>
+    <track type="Video">
+      <Format>HEVC</Format>
+      <BitRate>3500000</BitRate>
+      <Width>1920</Width>
+      <Height>1080</Height>
+      <FrameRate>23.976</FrameRate>
+    </track>
+    <track type="Audio">
+      <Format>AAC</Format>
+      <Channels>2</Channels>
+      <Default>Yes</Default>
+    </track>
+  </media>
+</MediaInfo>

@@ -47,6 +47,17 @@ def _format_bps(bps: int | None) -> str | None:
     return f"{kbps:.1f} Kbps"
 
 
+def _earliest_log_datetime(logs: list[dict[str, Any]]) -> datetime | None:
+    earliest: datetime | None = None
+    for item in logs:
+        candidate = _to_datetime(item.get("ts")) or _to_datetime(item.get("timestamp"))
+        if candidate is None:
+            continue
+        if earliest is None or candidate < earliest:
+            earliest = candidate
+    return earliest
+
+
 def build_sftpgo_session_payload(
     *,
     source_session_id: str,
@@ -80,8 +91,8 @@ def build_sftpgo_session_payload(
     started_at = (
         _to_datetime(connection.get("start_time"))
         or _to_datetime(connection.get("connected_at"))
-        or _to_datetime(_best_log_field(related_logs, "ts"))
-        or _to_datetime(_best_log_field(related_logs, "timestamp"))
+        or _to_datetime(connection.get("connection_time"))
+        or _earliest_log_datetime(related_logs)
     )
 
     bytes_sent = _to_int(connection.get("bytes_sent"))

@@ -45,3 +45,15 @@ def test_parse_mediainfo_falls_back_to_movie_nfo() -> None:
     assert summary.video_codec == "hevc"
     assert summary.audio_codec == "dca"
     assert summary.audio_channels == 6
+
+
+def test_parse_mediainfo_prefers_nfo_title_when_both_exist() -> None:
+    fixtures = _fixtures_dir()
+    media_file = fixtures / "with_xml_and_nfo" / "Movie.mkv"
+
+    summary = parse_mediainfo_for_media(str(media_file))
+
+    assert summary is not None
+    assert summary.title == "NFO Preferred Title"
+    assert summary.video_bitrate_bps == 3_500_000
+    assert summary.overall_bitrate_bps == 4_000_000

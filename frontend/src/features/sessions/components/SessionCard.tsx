@@ -38,7 +38,7 @@ function formatEpisode(session: UnifiedSession): string {
 function extractBitrate(session: UnifiedSession): string {
   const raw = session.raw_payload;
   if (!raw || typeof raw !== "object") {
-    return "n/a";
+    return session.bandwidth_human || "n/a";
   }
 
   const map = raw as Record<string, unknown>;
@@ -66,7 +66,7 @@ function extractBitrate(session: UnifiedSession): string {
     return `${Math.round(kbps / 1000)} Mbps`;
   }
 
-  return "n/a";
+  return session.bandwidth_human || "n/a";
 }
 
 export function SessionCard({ session, onOpen }: SessionCardProps) {
@@ -117,7 +117,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
               <SourceBadge source={session.source} />
             </div>
 
-            <div className="grid grid-cols-[86px_1fr] gap-x-2 gap-y-1 text-[0.95rem] leading-5 text-fg-muted">
+            <div className="grid grid-cols-[76px_1fr] gap-x-2 gap-y-1 text-[0.82rem] leading-4 text-fg-muted">
               <span className="text-fg-muted/85">TYPE</span><span className="truncate">{formatEpisode(session)}</span>
               <span className="text-fg-muted/85">START</span><span>{formatLocalTime(session.started_at)}</span>
               <span className="text-fg-muted/85">PLAYER</span><span className="truncate">{session.player_name || session.client_name || "n/a"}</span>
@@ -132,9 +132,8 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
       <div className="bg-[#0f1628] px-3 pb-3 pt-2">
         <p className="mb-2 truncate rounded-md bg-white/[0.08] px-2 py-1 text-xs text-fg-muted">{pathText}</p>
 
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <BandwidthBadge bandwidthBps={session.bandwidth_bps} text={session.bandwidth_human} />
-          <span className="text-xs text-fg-muted">Bitrate: {bitrateText}</span>
+        <div className="mb-1 flex items-center justify-start gap-2">
+          <BandwidthBadge bandwidthBps={session.bandwidth_bps} text={bitrateText} />
         </div>
 
         <div className="h-2 w-full overflow-hidden rounded-full bg-white/15">

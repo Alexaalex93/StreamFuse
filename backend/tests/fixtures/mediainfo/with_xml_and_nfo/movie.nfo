@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>NFO Preferred Title</title>
+  <runtime>130</runtime>
+  <fileinfo>
+    <streamdetails>
+      <video>
+        <codec>hevc</codec>
+        <width>1920</width>
+        <height>1080</height>
+        <bitrate>8000</bitrate>
+      </video>
+      <audio>
+        <codec>ac3</codec>
+        <channels>6</channels>
+      </audio>
+    </streamdetails>
+  </fileinfo>
+</movie>

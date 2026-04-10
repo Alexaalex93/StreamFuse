@@ -130,7 +130,7 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
 
 def _merge_summary(primary: MediaInfoSummary, fallback: MediaInfoSummary) -> MediaInfoSummary:
     return MediaInfoSummary(
-        title=primary.title or fallback.title,
+        title=fallback.title or primary.title,
         duration_ms=primary.duration_ms or fallback.duration_ms,
         overall_bitrate_bps=primary.overall_bitrate_bps or fallback.overall_bitrate_bps,
         video_bitrate_bps=primary.video_bitrate_bps or fallback.video_bitrate_bps,
@@ -306,5 +306,6 @@ def _first_non_empty(*values: str | None) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
 
 
