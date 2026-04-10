@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import PurePath
@@ -69,15 +69,27 @@ def _format_bandwidth_human(kbps: int | None) -> str | None:
     return f"{kbps} Kbps"
 
 
-def _source_session_id(payload: dict[str, Any]) -> str:
-    for key in ("session_id", "id", "reference_id", "rating_key"):
+def _source_session_id(payload: dict[str, Any], *, historical: bool) -> str:
+    if historical:
+        for key in ("id", "row_id", "history_id", "reference_id"):
+            value = payload.get(key)
+            if value not in (None, ""):
+                return f"tautulli-hist-{value}"
+
+        user = payload.get("user") or "user"
+        started = payload.get("started") or payload.get("date") or "unknown"
+        rating_key = payload.get("rating_key") or "none"
+        return f"tautulli-hist-{user}-{started}-{rating_key}"
+
+    for key in ("session_id", "session_key", "id", "reference_id"):
         value = payload.get(key)
         if value not in (None, ""):
-            return str(value)
+            return f"tautulli-live-{value}"
 
-    stamp = payload.get("started") or payload.get("date") or "unknown"
     user = payload.get("user") or "user"
-    return f"tautulli-{user}-{stamp}"
+    started = payload.get("started") or payload.get("date") or "unknown"
+    rating_key = payload.get("rating_key") or "none"
+    return f"tautulli-live-{user}-{started}-{rating_key}"
 
 
 def map_tautulli_payload(payload: dict[str, Any], *, historical: bool = False) -> UnifiedStreamSessionCreate:
@@ -115,7 +127,7 @@ def map_tautulli_payload(payload: dict[str, Any], *, historical: bool = False) -
 
     return UnifiedStreamSessionCreate(
         source=StreamSource.TAUTULLI,
-        source_session_id=_source_session_id(payload),
+        source_session_id=_source_session_id(payload, historical=historical),
         status=status,
         user_name=str(payload.get("user") or "unknown"),
         ip_address=payload.get("ip_address"),

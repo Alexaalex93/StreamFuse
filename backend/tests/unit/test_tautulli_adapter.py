@@ -36,7 +36,7 @@ def test_map_tautulli_payload_rich_fields() -> None:
 
     mapped = map_tautulli_payload(payload, historical=False)
 
-    assert mapped.source_session_id == "abc123"
+    assert mapped.source_session_id == "tautulli-live-abc123"
     assert mapped.user_name == "alice"
     assert mapped.media_type == MediaType.MOVIE
     assert mapped.status == SessionStatus.ACTIVE
