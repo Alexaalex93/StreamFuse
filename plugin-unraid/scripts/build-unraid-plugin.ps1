@@ -5,12 +5,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $pluginRoot = Join-Path $RepoRoot "plugin-unraid"
-$widgetDir = Join-Path $pluginRoot "widget"
+$runtimeDir = Join-Path $pluginRoot "runtime"
 $releaseDir = Join-Path $pluginRoot "release"
-$archivePath = Join-Path $releaseDir "unraid-widget.tar.gz"
+$archivePath = Join-Path $releaseDir "streamfuse-widget-unraid.tar.gz"
 
-if (-not (Test-Path $widgetDir)) {
-  throw "Widget folder not found: $widgetDir"
+if (-not (Test-Path $runtimeDir)) {
+  throw "Runtime folder not found: $runtimeDir"
 }
 
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -18,6 +18,6 @@ if (Test-Path $archivePath) {
   Remove-Item $archivePath -Force
 }
 
-tar -czf $archivePath -C $widgetDir .
+tar -czf $archivePath -C $runtimeDir .
 
 Write-Host "Created: $archivePath"

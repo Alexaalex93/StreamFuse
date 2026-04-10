@@ -1,0 +1,18 @@
+Menu="Dashboard"
+Title="StreamFuse Sessions"
+Icon="streamfuse-icon.png"
+Version="0.2.0"
+---
+<link rel="stylesheet" href="/plugins/streamfuse-widget/widget/widget.css">
+<div id="streamfuse-widget-root" class="streamfuse-widget-card">
+  <div class="streamfuse-widget-header">
+    <div class="streamfuse-widget-title">StreamFuse Sessions</div>
+    <button id="streamfuse-widget-refresh" class="streamfuse-chip" type="button">Refresh</button>
+  </div>
+  <div id="streamfuse-widget-summary" class="streamfuse-summary"></div>
+  <div id="streamfuse-widget-list" class="streamfuse-list"></div>
+  <div class="streamfuse-widget-footer">
+    <a id="streamfuse-widget-open" target="_blank" rel="noopener noreferrer">Open StreamFuse</a>
+  </div>
+</div>
+<script src="/plugins/streamfuse-widget/dashboard.js"></script>

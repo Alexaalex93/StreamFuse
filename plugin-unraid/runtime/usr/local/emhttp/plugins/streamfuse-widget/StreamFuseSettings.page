@@ -1,0 +1,71 @@
+Menu="Settings"
+Title="StreamFuse Widget"
+Icon="streamfuse-icon.png"
+Version="0.2.0"
+---
+<?php
+$plugin = 'streamfuse-widget';
+$cfg = parse_plugin_cfg($plugin, true);
+$backend = $cfg['backend_url'] ?? 'http://127.0.0.1:8000';
+$app = $cfg['app_url'] ?? 'http://127.0.0.1:5173';
+$refresh = (int)($cfg['refresh_seconds'] ?? 10);
+$limit = (int)($cfg['session_limit'] ?? 5);
+?>
+<link rel="stylesheet" href="/plugins/streamfuse-widget/widget/widget.css">
+<div class="streamfuse-settings" style="max-width:760px;padding:16px;background:#1a2130;border:1px solid #2a3447;border-radius:8px;">
+  <h2 style="margin-top:0;">StreamFuse Widget Settings</h2>
+  <p>Configure backend endpoint and widget behavior for the Unraid dashboard tile.</p>
+
+  <label style="display:block;margin-bottom:6px;">Backend URL (without /api)</label>
+  <input id="sf-backend-url" type="text" value="<?=htmlspecialchars($backend)?>" style="width:100%;margin-bottom:12px;" />
+
+  <label style="display:block;margin-bottom:6px;">StreamFuse App URL</label>
+  <input id="sf-app-url" type="text" value="<?=htmlspecialchars($app)?>" style="width:100%;margin-bottom:12px;" />
+
+  <label style="display:block;margin-bottom:6px;">Refresh (seconds)</label>
+  <input id="sf-refresh" type="number" min="3" max="120" value="<?=htmlspecialchars((string)$refresh)?>" style="width:180px;margin-bottom:12px;" />
+
+  <label style="display:block;margin-bottom:6px;">Max sessions shown</label>
+  <input id="sf-limit" type="number" min="1" max="20" value="<?=htmlspecialchars((string)$limit)?>" style="width:180px;margin-bottom:16px;" />
+
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button id="sf-save" class="btn">Save</button>
+    <span id="sf-status" style="color:#8fb0d9;"></span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const saveBtn = document.getElementById('sf-save');
+  const status = document.getElementById('sf-status');
+
+  async function saveConfig() {
+    status.textContent = 'Saving...';
+    const payload = {
+      backend_url: document.getElementById('sf-backend-url').value.trim(),
+      app_url: document.getElementById('sf-app-url').value.trim(),
+      refresh_seconds: Number(document.getElementById('sf-refresh').value || 10),
+      session_limit: Number(document.getElementById('sf-limit').value || 5),
+    };
+
+    const resp = await fetch('/plugins/streamfuse-widget/api/save.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin'
+    });
+
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      status.textContent = data.error || 'Save failed';
+      return;
+    }
+    status.textContent = 'Saved';
+  }
+
+  saveBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    saveConfig().catch(() => { status.textContent = 'Save failed'; });
+  });
+})();
+</script>

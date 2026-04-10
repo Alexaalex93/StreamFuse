@@ -2,19 +2,35 @@
 <PLUGIN
   name="streamfuse-widget"
   author="alexaalex93"
-  version="0.1.0"
+  version="0.2.0"
   pluginURL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/plg/streamfuse-widget.plg"
   icon="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/assets/streamfuse-icon.png">
 
+  <CHANGES>
+###2026.04.11
+- Added native Dynamix dashboard widget integration
+- Added plugin settings page for backend URL and refresh options
+- Added server-side proxy endpoint to avoid CORS issues
+  </CHANGES>
+
   <FILE
-    Name="/boot/config/plugins/streamfuse-widget/unraid-widget.tar.gz"
-    URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/release/unraid-widget.tar.gz" />
+    Name="/boot/config/plugins/streamfuse-widget/streamfuse-widget-unraid.tar.gz"
+    URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/release/streamfuse-widget-unraid.tar.gz" />
 
   <FILE Run="/bin/bash">
     <INLINE>
-mkdir -p /usr/local/emhttp/plugins/streamfuse-widget
-tar -xzf /boot/config/plugins/streamfuse-widget/unraid-widget.tar.gz -C /usr/local/emhttp/plugins/streamfuse-widget
+mkdir -p /boot/config/plugins/streamfuse-widget
+mkdir -p /usr/local/emhttp/plugins
+tar -xzf /boot/config/plugins/streamfuse-widget/streamfuse-widget-unraid.tar.gz -C /
 chmod -R 755 /usr/local/emhttp/plugins/streamfuse-widget
+if [ ! -f /boot/config/plugins/streamfuse-widget/streamfuse-widget.cfg ]; then
+cat >/boot/config/plugins/streamfuse-widget/streamfuse-widget.cfg <<'EOF'
+backend_url="http://127.0.0.1:8000"
+app_url="http://127.0.0.1:5173"
+refresh_seconds="10"
+session_limit="5"
+EOF
+fi
     </INLINE>
   </FILE>
 
