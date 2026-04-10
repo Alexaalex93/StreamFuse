@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 from pathlib import PurePath
@@ -93,6 +93,13 @@ def parse_series_context(path: str) -> dict[str, object]:
     if series_title is None and season_index is None and len(parts) >= 2 and is_episode:
         series_title = _normalize_tokens(parts[-2])
 
+    lowered_parts = [part.lower() for part in parts]
+    if series_title is None and "series" in lowered_parts:
+        series_idx = lowered_parts.index("series")
+        if series_idx + 1 < len(parts):
+            series_title = _normalize_tokens(parts[series_idx + 1])
+            is_episode = True
+
     return {
         "is_episode": is_episode,
         "series_title": series_title,
@@ -103,6 +110,12 @@ def parse_series_context(path: str) -> dict[str, object]:
 
 
 def detect_media_type(path: str) -> MediaType:
+    normalized_path = path.replace("\\", "/").lower()
+    if "/series/" in normalized_path:
+        return MediaType.EPISODE
+    if "/peliculas/" in normalized_path:
+        return MediaType.MOVIE
+
     series = parse_series_context(path)
     if bool(series["is_episode"]):
         return MediaType.EPISODE
@@ -112,3 +125,4 @@ def detect_media_type(path: str) -> MediaType:
         return MediaType.MOVIE
 
     return MediaType.OTHER
+

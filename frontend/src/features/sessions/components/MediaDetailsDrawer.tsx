@@ -65,6 +65,13 @@ function upperValue(value: string | number | null | undefined, uppercase = true)
   return uppercase ? text.toUpperCase() : text;
 }
 
+
+function detailsMediaType(session: UnifiedSession): string {
+  if (session.media_type === "episode") {
+    return "SERIES";
+  }
+  return upperValue(session.media_type);
+}
 type MediaDetailsDrawerProps = {
   open: boolean;
   session: UnifiedSession | null;
@@ -132,7 +139,7 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4">
                 <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Technical Snapshot</p>
                 <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-fg-muted">
-                  <p><span className="text-white">Type:</span> {upperValue(session.media_type)}</p>
+                  <p><span className="text-white">Type:</span> {detailsMediaType(session)}</p>
                   <p><span className="text-white">IP:</span> {upperValue(session.ip_address)}</p>
                   <p><span className="text-white">Resolution:</span> {upperValue(session.resolution)}</p>
                   <p><span className="text-white">Video codec:</span> {upperValue(session.video_codec)}</p>
@@ -206,4 +213,5 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
     </>
   );
 }
+
 

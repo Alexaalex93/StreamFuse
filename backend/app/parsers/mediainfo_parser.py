@@ -71,8 +71,8 @@ def _parse_mediainfo_xml(xml_file: Path) -> MediaInfoSummary | None:
             _find_text(general_track, "Title"),
         ),
         duration_ms=_duration_to_ms(_find_text(general_track, "Duration")),
-        overall_bitrate_bps=_to_bitrate_bps(_find_text(general_track, "OverallBitRate")),
-        video_bitrate_bps=_to_bitrate_bps(_find_text(video_track, "BitRate")),
+        overall_bitrate_bps=_to_bitrate_bps(_first_non_empty(_find_text(general_track, "OverallBitRate"), _find_text(general_track, "OverallBitRate/String"), _find_text(general_track, "BitRate"))),
+        video_bitrate_bps=_to_bitrate_bps(_first_non_empty(_find_text(video_track, "BitRate"), _find_text(video_track, "BitRate_Nominal"), _find_text(video_track, "BitRate_Maximum"), _find_text(video_track, "BitRate/String"))),
         resolution=_format_resolution(width, height),
         video_codec=_first_non_empty(
             _find_text(video_track, "Format"),
@@ -111,7 +111,9 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
     overall_bitrate_bps = _to_bitrate_bps(
         _first_non_empty(
             _find_text(video, "bitrate"),
+            _find_text(video, "bitrateinbits"),
             _find_text(root, "bitrate"),
+            _find_text(root, "bitrateinbits"),
         )
     )
 
@@ -306,6 +308,7 @@ def _first_non_empty(*values: str | None) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
 
 
 

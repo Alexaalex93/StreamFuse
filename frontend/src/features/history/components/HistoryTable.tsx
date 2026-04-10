@@ -21,12 +21,46 @@ function fmt(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "n/a" : date.toLocaleString();
 }
 
-function shortPath(path: string | null): string {
-  if (!path) {
-    return "n/a";
+function mediaLabel(session: UnifiedSession): string {
+  if (session.media_type === "episode") {
+    return "series";
   }
-  const normalized = path.replace(/\\/g, "/");
-  return normalized.length > 52 ? `...${normalized.slice(-52)}` : normalized;
+  return session.media_type;
+}
+
+function episodeCode(session: UnifiedSession): string | null {
+  const hasSeason = session.season_number != null;
+  const hasEpisode = session.episode_number != null;
+  if (!hasSeason && !hasEpisode) {
+    return null;
+  }
+
+  const s = hasSeason ? `S${String(session.season_number).padStart(2, "0")}` : "";
+  const e = hasEpisode ? `E${String(session.episode_number).padStart(2, "0")}` : "";
+  return `${s}${e}` || null;
+}
+
+function rowTitle(session: UnifiedSession): string {
+  if (session.media_type === "episode") {
+    return session.series_title || session.title || session.file_name || "Untitled";
+  }
+  return session.title || session.file_name || "Untitled";
+}
+
+function rowSubtitle(session: UnifiedSession): string {
+  if (session.media_type !== "episode") {
+    return session.file_path || "n/a";
+  }
+
+  const code = episodeCode(session);
+  const episodeTitle = session.title && session.series_title && session.title !== session.series_title ? session.title : null;
+  const line = [episodeTitle, code].filter(Boolean).join(" · ");
+
+  if (line) {
+    return line;
+  }
+
+  return session.file_path || "n/a";
 }
 
 function toMbpsTextFromBps(value: number): string {
@@ -85,46 +119,36 @@ function extractBitrateText(session: UnifiedSession): string {
 export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-premium">
-      <table className="w-full table-fixed text-sm">
-        <colgroup>
-          <col style={{ width: "34%" }} />
-          <col style={{ width: "14%" }} />
-          <col style={{ width: "12%" }} />
-          <col style={{ width: "10%" }} />
-          <col style={{ width: "12%" }} />
-          <col style={{ width: "10%" }} />
-          <col style={{ width: "8%" }} />
-        </colgroup>
+      <table className="w-full table-auto text-sm">
         <thead className="bg-white/[0.03] text-left text-fg-muted">
           <tr>
-            <th className="px-4 py-3 font-medium">Session</th>
-            <th className="px-4 py-3 font-medium">User</th>
-            <th className="px-4 py-3 font-medium">Source</th>
-            <th className="px-4 py-3 font-medium">Media</th>
-            <th className="px-4 py-3 font-medium">Ended</th>
-            <th className="px-4 py-3 font-medium">Bandwidth</th>
-            <th className="px-4 py-3 font-medium">Action</th>
+            <th className="px-3 py-3 font-medium">Session</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">User</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">Source</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">Media</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">Ended</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">Bandwidth</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">Action</th>
           </tr>
         </thead>
         <tbody>
           {sessions.map((session) => {
             const expanded = session.id === expandedId;
             const bitrateText = extractBitrateText(session);
+
             return (
               <Fragment key={session.id}>
                 <tr className="border-t border-white/10 align-top">
-                  <td className="px-4 py-3">
-                    <div className="max-w-[240px]">
-                      <p className="truncate font-medium text-white">{session.title || session.file_name || "Untitled"}</p>
-                      <p className="mt-1 truncate text-xs text-fg-muted">{shortPath(session.file_path)}</p>
-                    </div>
+                  <td className="px-3 py-3">
+                    <p className="break-words font-medium text-white">{rowTitle(session)}</p>
+                    <p className="mt-1 break-all text-xs text-fg-muted">{rowSubtitle(session)}</p>
                   </td>
-                  <td className="px-4 py-3 text-fg">{session.user_name}</td>
-                  <td className="px-4 py-3"><SourceBadge source={session.source} /></td>
-                  <td className="px-4 py-3 text-fg-muted">{session.media_type}</td>
-                  <td className="px-4 py-3 text-fg-muted">{fmt(session.ended_at || session.updated_at)}</td>
-                  <td className="px-4 py-3"><BandwidthBadge bandwidthBps={session.bandwidth_bps} text={bitrateText} /></td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 text-fg whitespace-nowrap">{session.user_name}</td>
+                  <td className="px-3 py-3 whitespace-nowrap"><SourceBadge source={session.source} /></td>
+                  <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{mediaLabel(session)}</td>
+                  <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{fmt(session.ended_at || session.updated_at)}</td>
+                  <td className="px-3 py-3 whitespace-nowrap"><BandwidthBadge bandwidthBps={session.bandwidth_bps} text={bitrateText} /></td>
+                  <td className="px-3 py-3 whitespace-nowrap">
                     <button
                       type="button"
                       className="rounded-lg border border-white/15 px-3 py-1 text-xs text-fg-muted transition hover:bg-white/[0.06]"
@@ -134,6 +158,7 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                     </button>
                   </td>
                 </tr>
+
                 {expanded ? (
                   <tr className="border-t border-white/10 bg-white/[0.01]">
                     <td colSpan={7} className="px-4 py-4">
@@ -170,7 +195,3 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
     </div>
   );
 }
-
-
-
-

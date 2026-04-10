@@ -91,7 +91,7 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-app-gradient text-fg">
-      <div className="mx-auto grid min-h-screen max-w-[1440px] grid-cols-1 lg:grid-cols-[280px_1fr]">
+      <div className="mx-auto grid min-h-screen max-w-[1720px] grid-cols-1 lg:grid-cols-[280px_1fr]">
         <aside className="border-r border-white/10 bg-sidebar px-4 py-6 backdrop-blur-xl">
           <div className="mb-8 flex items-center gap-3 px-2">
             <StreamFuseLogo className="h-10 w-10" />
@@ -161,10 +161,11 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
+          <main className="flex-1 px-4 py-6 md:px-8"><div className="mx-auto min-h-[calc(100vh-140px)] w-full">{children}</div></main>
         </div>
       </div>
     </div>
   );
 }
+
 

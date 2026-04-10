@@ -24,15 +24,46 @@ function summarizePath(path: string | null): string {
   return `...${normalized.slice(-80)}`;
 }
 
-function formatEpisode(session: UnifiedSession): string {
+function formatEpisodeCode(session: UnifiedSession): string | null {
   const hasSeason = session.season_number != null;
   const hasEpisode = session.episode_number != null;
   if (!hasSeason && !hasEpisode) {
-    return session.media_type;
+    return null;
   }
   const s = hasSeason ? `S${String(session.season_number).padStart(2, "0")}` : "";
   const e = hasEpisode ? `E${String(session.episode_number).padStart(2, "0")}` : "";
-  return `${s}${e}`;
+  return `${s}${e}` || null;
+}
+
+function mediaTypeLabel(session: UnifiedSession): string {
+  if (session.media_type === "episode") {
+    return "series";
+  }
+  return session.media_type || "other";
+}
+
+function cardTitle(session: UnifiedSession): string {
+  if (session.media_type === "episode") {
+    return session.series_title || session.title || session.file_name || "Untitled";
+  }
+  return session.title || session.file_name || "Untitled";
+}
+
+function cardSubtitle(session: UnifiedSession): string | null {
+  if (session.media_type !== "episode") {
+    return null;
+  }
+
+  const episodeName = session.title && session.series_title && session.title !== session.series_title ? session.title : null;
+  const code = formatEpisodeCode(session);
+
+  if (episodeName && code) {
+    return `${episodeName} · ${code}`;
+  }
+  if (episodeName) {
+    return episodeName;
+  }
+  return code;
 }
 
 function extractBitrate(session: UnifiedSession): string {
@@ -76,6 +107,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
   const progress = Math.max(0, Math.min(100, session.progress_percent ?? 0));
   const pathText = summarizePath(session.file_path);
   const bitrateText = extractBitrate(session);
+  const subtitle = cardSubtitle(session);
 
   return (
     <article
@@ -117,8 +149,8 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
               <SourceBadge source={session.source} />
             </div>
 
-            <div className="grid grid-cols-[76px_1fr] gap-x-2 gap-y-1 text-[0.82rem] leading-4 text-fg-muted">
-              <span className="text-fg-muted/85">TYPE</span><span className="truncate">{formatEpisode(session)}</span>
+            <div className="grid grid-cols-[76px_1fr] gap-x-2 gap-y-1 text-[0.8rem] leading-4 text-fg-muted">
+              <span className="text-fg-muted/85">TYPE</span><span className="truncate">{mediaTypeLabel(session)}</span>
               <span className="text-fg-muted/85">START</span><span>{formatLocalTime(session.started_at)}</span>
               <span className="text-fg-muted/85">PLAYER</span><span className="truncate">{session.player_name || session.client_name || "n/a"}</span>
               <span className="text-fg-muted/85">QUALITY</span><span>{session.resolution || "n/a"}</span>
@@ -145,7 +177,8 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
 
         <div className="mt-3 flex items-end justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-[1rem] font-semibold text-white">{session.title || session.file_name || "Untitled"}</p>
+            <p className="truncate text-[1rem] font-semibold text-white">{cardTitle(session)}</p>
+            {subtitle ? <p className="truncate text-xs text-fg-muted">{subtitle}</p> : null}
           </div>
           <p className="shrink-0 text-sm text-fg-muted">{session.user_name}</p>
         </div>
