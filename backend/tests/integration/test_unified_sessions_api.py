@@ -87,7 +87,7 @@ def test_api_active_and_history_filters() -> None:
         app.dependency_overrides.clear()
 
 
-def test_v1_sessions_endpoint_returns_seeded_rows() -> None:
+def test_v1_sessions_endpoint_returns_only_active_and_honors_source_filter() -> None:
     engine = create_engine(
         "sqlite://",
         future=True,
@@ -122,15 +122,39 @@ def test_v1_sessions_endpoint_returns_seeded_rows() -> None:
                 )
             ]
         )
+        service.ingest_sftpgo_sessions(
+            [
+                UnifiedStreamSessionCreate(
+                    source=StreamSource.SFTPGO,
+                    source_session_id="s-v1-1",
+                    user_name="bob",
+                    title="Episode B",
+                    title_clean="episode b",
+                    media_type=MediaType.EPISODE,
+                    started_at=datetime.now(timezone.utc),
+                )
+            ]
+        )
+        service.mark_stale_sessions(source=StreamSource.SFTPGO)
         db.close()
 
         client = TestClient(app)
-        response = client.get("/api/v1/sessions")
 
+        response = client.get("/api/v1/sessions")
         assert response.status_code == 200
         rows = response.json()
         assert len(rows) == 1
         assert rows[0]["source"] == "tautulli"
+
+        response_sftpgo = client.get("/api/v1/sessions", params={"source": "sftpgo"})
+        assert response_sftpgo.status_code == 200
+        assert response_sftpgo.json() == []
+
+        response_tautulli = client.get("/api/v1/sessions", params={"source": "tautulli"})
+        assert response_tautulli.status_code == 200
+        tautulli_rows = response_tautulli.json()
+        assert len(tautulli_rows) == 1
+        assert tautulli_rows[0]["source"] == "tautulli"
     finally:
         app.dependency_overrides.clear()
 

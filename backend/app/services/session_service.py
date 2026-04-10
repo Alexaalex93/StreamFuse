@@ -1,16 +1,20 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 
 from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate
 from app.domain.enums import MediaType, SessionStatus, StreamSource
-from app.persistence.repositories.unified_stream_session_repository import UnifiedStreamSessionRepository
+from app.persistence.repositories.unified_stream_session_repository import (
+    SessionQueryFilters,
+    UnifiedStreamSessionRepository,
+)
 
 
 class SessionService:
     def __init__(self, repository: UnifiedStreamSessionRepository) -> None:
         self.repository = repository
 
-    def list_active_sessions(self, limit: int = 100):
-        return self.repository.list_recent(limit=limit)
+    def list_active_sessions(self, limit: int = 100, source: StreamSource | None = None):
+        filters = SessionQueryFilters(limit=limit, source=source)
+        return self.repository.list_active(filters)
 
     def create_session(self, payload: UnifiedStreamSessionCreate):
         if payload.started_at is None:
