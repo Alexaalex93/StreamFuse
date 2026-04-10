@@ -145,9 +145,9 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
           </div>
         </aside>
 
-        <div className="flex min-h-screen flex-col">
-          <header className="sticky top-0 z-20 border-b border-white/10 bg-topbar/70 px-4 py-3 backdrop-blur-xl md:px-8">
-            <div className="flex items-center justify-between gap-4">
+        <div className="flex min-h-screen flex-col overflow-y-scroll">
+          <header className="sticky top-0 z-20 h-[76px] border-b border-white/10 bg-topbar/70 px-4 backdrop-blur-xl md:px-8">
+            <div className="flex h-full items-center justify-between gap-4">
               <div>
                 <h1 className="font-display text-xl font-semibold text-white">StreamFuse Console</h1>
                 <p className="text-xs text-fg-muted">Premium visibility for media sessions and transfer activity.</p>

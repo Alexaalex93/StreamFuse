@@ -29,36 +29,57 @@ function shortPath(path: string | null): string {
   return normalized.length > 52 ? `...${normalized.slice(-52)}` : normalized;
 }
 
+function toMbpsTextFromBps(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "n/a";
+  }
+  const mbps = value / 1_000_000;
+  return `${mbps.toFixed(1)} Mbps`;
+}
+
 function extractBitrateText(session: UnifiedSession): string {
   const raw = session.raw_payload;
   if (raw && typeof raw === "object") {
     const map = raw as Record<string, unknown>;
     const mediaInfo = map.media_info as Record<string, unknown> | undefined;
 
-    const bpsFromMedia =
-      typeof mediaInfo?.video_bitrate_bps === "number"
-        ? mediaInfo.video_bitrate_bps
-        : typeof mediaInfo?.overall_bitrate_bps === "number"
-          ? mediaInfo.overall_bitrate_bps
-          : null;
+    const bpsCandidates: Array<number | null> = [
+      typeof mediaInfo?.video_bitrate_bps === "number" ? mediaInfo.video_bitrate_bps : null,
+      typeof mediaInfo?.overall_bitrate_bps === "number" ? mediaInfo.overall_bitrate_bps : null,
+      typeof map.video_bitrate === "number" ? map.video_bitrate : null,
+      typeof map.stream_video_bitrate === "number" ? map.stream_video_bitrate : null,
+      typeof map.bitrate === "number" ? map.bitrate : null,
+      typeof map.stream_bitrate === "number" ? map.stream_bitrate : null,
+    ];
 
-    if (typeof bpsFromMedia === "number" && bpsFromMedia > 0) {
-      return `${Math.round(bpsFromMedia / 1_000_000)} Mbps`;
+    for (const candidate of bpsCandidates) {
+      if (typeof candidate === "number" && candidate > 0) {
+        if (candidate < 1_000_000) {
+          return `${(candidate / 1000).toFixed(1)} Mbps`;
+        }
+        return toMbpsTextFromBps(candidate);
+      }
     }
 
-    const kbps =
-      typeof map.stream_bitrate === "number"
-        ? map.stream_bitrate
-        : typeof map.bitrate === "number"
-          ? map.bitrate
-          : null;
-
-    if (typeof kbps === "number" && kbps > 0) {
-      return `${Math.round(kbps / 1000)} Mbps`;
+    const fileSize = typeof map.file_size === "number" ? map.file_size : null;
+    const durationMs = typeof map.duration === "number" ? map.duration : session.duration_ms;
+    if (fileSize && durationMs && durationMs > 0) {
+      const approxBps = (fileSize * 8 * 1000) / durationMs;
+      if (approxBps > 0) {
+        return `~${toMbpsTextFromBps(approxBps)}`;
+      }
     }
   }
 
-  return session.bandwidth_human || "n/a";
+  if (session.bandwidth_human && session.bandwidth_human !== "n/a") {
+    return session.bandwidth_human;
+  }
+
+  if (typeof session.bandwidth_bps === "number" && session.bandwidth_bps > 0) {
+    return toMbpsTextFromBps(session.bandwidth_bps);
+  }
+
+  return "n/a";
 }
 
 export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
