@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 @dataclass(slots=True)
 class MediaInfoSummary:
     title: str | None = None
+    series_title: str | None = None
+    episode_title: str | None = None
+    season_number: int | None = None
+    episode_number: int | None = None
     duration_ms: int | None = None
     overall_bitrate_bps: int | None = None
     video_bitrate_bps: int | None = None
@@ -137,6 +141,10 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
 def _merge_summary(primary: MediaInfoSummary, fallback: MediaInfoSummary) -> MediaInfoSummary:
     return MediaInfoSummary(
         title=fallback.title or primary.title,
+        series_title=fallback.series_title or primary.series_title,
+        episode_title=fallback.episode_title or primary.episode_title,
+        season_number=primary.season_number or fallback.season_number,
+        episode_number=primary.episode_number or fallback.episode_number,
         duration_ms=primary.duration_ms or fallback.duration_ms,
         overall_bitrate_bps=primary.overall_bitrate_bps or fallback.overall_bitrate_bps,
         video_bitrate_bps=primary.video_bitrate_bps or fallback.video_bitrate_bps,
@@ -341,3 +349,13 @@ def _first_non_empty(*values: str | None) -> str | None:
 
 
 
+
+
+
+
+
+
+
+
+def _normalize_match_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())

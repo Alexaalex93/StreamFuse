@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate
@@ -38,6 +38,43 @@ class UnifiedStreamSessionRepository:
     def list_recent(self, limit: int = 100) -> list[UnifiedStreamSessionModel]:
         stmt = select(UnifiedStreamSessionModel).order_by(UnifiedStreamSessionModel.updated_at.desc()).limit(limit)
         return list(self.db.scalars(stmt).all())
+
+    def list_detected_users(self) -> list[dict[str, object]]:
+        stmt = (
+            select(
+                UnifiedStreamSessionModel.user_name,
+                UnifiedStreamSessionModel.source,
+                func.count(UnifiedStreamSessionModel.id).label("session_count"),
+            )
+            .where(UnifiedStreamSessionModel.user_name.is_not(None))
+            .group_by(UnifiedStreamSessionModel.user_name, UnifiedStreamSessionModel.source)
+        )
+        rows = self.db.execute(stmt).all()
+
+        aggregated: dict[str, dict[str, object]] = {}
+        for user_name, source, count in rows:
+            cleaned_user = (str(user_name).strip() if user_name is not None else "")
+            if not cleaned_user:
+                continue
+            item = aggregated.setdefault(
+                cleaned_user,
+                {"user_name": cleaned_user, "session_count": 0, "sources": set()},
+            )
+            item["session_count"] = int(item["session_count"]) + int(count or 0)
+            item["sources"].add(str(source.value if hasattr(source, "value") else source))
+
+        result: list[dict[str, object]] = []
+        for key in sorted(aggregated.keys(), key=lambda value: value.lower()):
+            value = aggregated[key]
+            sources = sorted(str(source) for source in value["sources"])
+            result.append(
+                {
+                    "user_name": str(value["user_name"]),
+                    "session_count": int(value["session_count"]),
+                    "sources": sources,
+                }
+            )
+        return result
 
     def list_active(self, filters: SessionQueryFilters) -> list[UnifiedStreamSessionModel]:
         clauses = [UnifiedStreamSessionModel.status == SessionStatus.ACTIVE]
@@ -143,3 +180,4 @@ class UnifiedStreamSessionRepository:
         if filters.date_to:
             clauses.append(UnifiedStreamSessionModel.started_at <= filters.date_to)
         return clauses
+

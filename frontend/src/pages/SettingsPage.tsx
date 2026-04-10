@@ -4,7 +4,7 @@ import { apiGet, apiPut } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { ErrorState } from "@/shared/ui/states/ErrorState";
 import { LoadingState } from "@/shared/ui/states/LoadingState";
-import { StreamFuseSettings, StreamFuseSettingsUpdate } from "@/types/settings";
+import { DetectedUserAliasOption, StreamFuseSettings, StreamFuseSettingsUpdate } from "@/types/settings";
 
 type SettingsFormState = {
   tautulliUrl: string;
@@ -20,7 +20,7 @@ type SettingsFormState = {
   timezone: string;
   mediaRootPaths: string;
   preferredPosterNames: string;
-  userAliases: string;
+  userAliases: Record<string, string>;
   placeholderPath: string;
   historyRetentionDays: string;
 };
@@ -30,40 +30,6 @@ function parseListFromTextarea(text: string): string[] {
     .split(/\r?\n|,/) 
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function aliasesToTextarea(value: Record<string, string>): string {
-  return Object.entries(value)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, alias]) => `${key}=${alias}`)
-    .join("\n");
-}
-
-function parseAliasesFromTextarea(text: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const lines = text.split(/\r?\n/);
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) {
-      continue;
-    }
-
-    const separator = line.includes("=") ? "=" : line.includes(":") ? ":" : null;
-    if (!separator) {
-      continue;
-    }
-
-    const [sourceRaw, ...rest] = line.split(separator);
-    const source = sourceRaw.trim();
-    const alias = rest.join(separator).trim();
-    if (!source || !alias) {
-      continue;
-    }
-    result[source] = alias;
-  }
-
-  return result;
 }
 
 function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
@@ -81,7 +47,7 @@ function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
     timezone: settings.timezone,
     mediaRootPaths: settings.media_root_paths.join("\n"),
     preferredPosterNames: settings.preferred_poster_names.join("\n"),
-    userAliases: aliasesToTextarea(settings.user_aliases),
+    userAliases: { ...settings.user_aliases },
     placeholderPath: settings.placeholder_path,
     historyRetentionDays: String(settings.history_retention_days),
   };
@@ -119,16 +85,33 @@ const labelClass = "mb-1 block text-xs font-semibold uppercase tracking-[0.12em]
 export function SettingsPage() {
   const [settings, setSettings] = useState<StreamFuseSettings | null>(null);
   const [form, setForm] = useState<SettingsFormState | null>(null);
+  const [detectedUsers, setDetectedUsers] = useState<DetectedUserAliasOption[]>([]);
+  const [selectedDetectedUser, setSelectedDetectedUser] = useState("");
+  const [aliasDraft, setAliasDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const loadDetectedUsers = async () => {
+    const users = await apiGet<DetectedUserAliasOption[]>("/settings/detected-users");
+    setDetectedUsers(users);
+    setSelectedDetectedUser((current) => {
+      if (current && users.some((item) => item.user_name === current)) {
+        return current;
+      }
+      return users[0]?.user_name ?? "";
+    });
+  };
+
   const loadSettings = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiGet<StreamFuseSettings>("/settings");
+      const [data] = await Promise.all([
+        apiGet<StreamFuseSettings>("/settings"),
+        loadDetectedUsers(),
+      ]);
       setSettings(data);
       setForm(mapSettingsToForm(data));
     } catch (err) {
@@ -157,6 +140,42 @@ export function SettingsPage() {
     return new Date(settings.updated_at).toLocaleString();
   }, [settings]);
 
+  const selectedDetectedUserMeta = useMemo(
+    () => detectedUsers.find((item) => item.user_name === selectedDetectedUser) ?? null,
+    [detectedUsers, selectedDetectedUser]
+  );
+
+  useEffect(() => {
+    if (!form || !selectedDetectedUser) {
+      setAliasDraft("");
+      return;
+    }
+    setAliasDraft(form.userAliases[selectedDetectedUser] ?? "");
+  }, [form, selectedDetectedUser]);
+
+  const onApplyAliasDraft = () => {
+    if (!form || !selectedDetectedUser) {
+      return;
+    }
+    const trimmed = aliasDraft.trim();
+    const nextAliases = { ...form.userAliases };
+    if (!trimmed) {
+      delete nextAliases[selectedDetectedUser];
+    } else {
+      nextAliases[selectedDetectedUser] = trimmed;
+    }
+    setForm({ ...form, userAliases: nextAliases });
+  };
+
+  const onDeleteAlias = (sourceUser: string) => {
+    if (!form) {
+      return;
+    }
+    const nextAliases = { ...form.userAliases };
+    delete nextAliases[sourceUser];
+    setForm({ ...form, userAliases: nextAliases });
+  };
+
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!form) {
@@ -182,7 +201,7 @@ export function SettingsPage() {
       timezone: form.timezone.trim(),
       media_root_paths: parseListFromTextarea(form.mediaRootPaths),
       preferred_poster_names: parseListFromTextarea(form.preferredPosterNames),
-      user_aliases: parseAliasesFromTextarea(form.userAliases),
+      user_aliases: form.userAliases,
       placeholder_path: form.placeholderPath.trim(),
       history_retention_days: Number(form.historyRetentionDays),
     };
@@ -200,6 +219,7 @@ export function SettingsPage() {
       const updated = await apiPut<StreamFuseSettings, StreamFuseSettingsUpdate>("/settings", payload);
       setSettings(updated);
       setForm(mapSettingsToForm(updated));
+      await loadDetectedUsers();
       setSuccess("Settings saved successfully.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save settings");
@@ -227,6 +247,8 @@ export function SettingsPage() {
   if (!form || !settings) {
     return <ErrorState title="Settings unavailable" description="Settings payload is empty." />;
   }
+
+  const aliasEntries = Object.entries(form.userAliases).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="space-y-6">
@@ -351,10 +373,71 @@ export function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-white/10 bg-card p-5">
-          <h3 className="font-display text-xl text-white">User Aliases</h3>
-          <p className="mb-3 text-sm text-fg-muted">Use one alias per line: <code className="text-fg">real_user=Display Name</code>.</p>
-          <textarea rows={8} className={inputClass} value={form.userAliases} onChange={(event) => setForm({ ...form, userAliases: event.target.value })} placeholder="sil.g8=Sil\nalex_aalex93=Alex" />
+        <section className="rounded-2xl border border-white/10 bg-card p-5 space-y-4">
+          <div>
+            <h3 className="font-display text-xl text-white">User Aliases</h3>
+            <p className="text-sm text-fg-muted">Select a detected user and assign the display name to show across Dashboard and History.</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[2fr_2fr_auto] md:items-end">
+            <div>
+              <label className={labelClass} htmlFor="detected-user">Detected user</label>
+              <select
+                id="detected-user"
+                className={inputClass}
+                value={selectedDetectedUser}
+                onChange={(event) => setSelectedDetectedUser(event.target.value)}
+              >
+                {detectedUsers.length === 0 ? <option value="">No users detected yet</option> : null}
+                {detectedUsers.map((user) => (
+                  <option key={user.user_name} value={user.user_name}>
+                    {user.user_name} ({user.session_count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass} htmlFor="alias-input">Alias</label>
+              <input
+                id="alias-input"
+                className={inputClass}
+                value={aliasDraft}
+                onChange={(event) => setAliasDraft(event.target.value)}
+                placeholder="Display name"
+              />
+            </div>
+
+            <Button type="button" variant="outline" onClick={onApplyAliasDraft} disabled={!selectedDetectedUser}>
+              Set Alias
+            </Button>
+          </div>
+
+          {selectedDetectedUserMeta ? (
+            <p className="text-xs text-fg-muted">
+              Sources: {selectedDetectedUserMeta.sources.join(", ") || "n/a"}
+              {" | "}
+              Sessions: {selectedDetectedUserMeta.session_count}
+              {selectedDetectedUserMeta.alias ? ` | Current alias: ${selectedDetectedUserMeta.alias}` : ""}
+            </p>
+          ) : null}
+
+          <div className="space-y-2">
+            {aliasEntries.length === 0 ? <p className="text-sm text-fg-muted">No aliases configured.</p> : null}
+            {aliasEntries.map(([source, alias]) => (
+              <div key={source} className="grid grid-cols-1 gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3 md:grid-cols-[2fr_2fr_auto] md:items-center">
+                <p className="text-sm text-fg">{source}</p>
+                <input
+                  className={inputClass}
+                  value={alias}
+                  onChange={(event) => setForm({ ...form, userAliases: { ...form.userAliases, [source]: event.target.value } })}
+                />
+                <Button type="button" variant="ghost" onClick={() => onDeleteAlias(source)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
         </section>
 
         <div className="flex items-center gap-3">

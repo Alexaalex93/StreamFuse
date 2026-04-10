@@ -136,7 +136,14 @@ def build_sftpgo_session_payload(
     season_number = series_ctx.get("season_number")
     episode_number = series_ctx.get("episode_number")
 
-    media_title = _clean_display_text(media_info.title) if media_info and media_info.title else ""
+    if media_info and media_info.series_title:
+        series_title = _clean_display_text(media_info.series_title) or series_title
+    if media_info and media_info.season_number is not None:
+        season_number = media_info.season_number
+    if media_info and media_info.episode_number is not None:
+        episode_number = media_info.episode_number
+
+    media_title = _clean_display_text(media_info.episode_title if media_info and media_info.episode_title else media_info.title) if media_info and (media_info.episode_title or media_info.title) else ""
     fallback_title = clean_movie_title(file_name or source_session_id)
     base_title = media_title or _clean_display_text(fallback_title)
 
@@ -207,4 +214,6 @@ def _best_log_field(logs: list[dict[str, Any]], field: str) -> Any:
         if value not in (None, ""):
             return value
     return None
+
+
 

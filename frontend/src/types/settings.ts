@@ -38,3 +38,10 @@ export type StreamFuseSettingsUpdate = {
   placeholder_path?: string;
   history_retention_days?: number;
 };
+
+export type DetectedUserAliasOption = {
+  user_name: string;
+  alias: string | null;
+  session_count: number;
+  sources: string[];
+};
