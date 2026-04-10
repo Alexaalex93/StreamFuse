@@ -17,6 +17,7 @@ type SettingsFormState = {
   timezone: string;
   mediaRootPaths: string;
   preferredPosterNames: string;
+  userAliases: string;
   placeholderPath: string;
   historyRetentionDays: string;
 };
@@ -26,6 +27,40 @@ function parseListFromTextarea(text: string): string[] {
     .split(/\r?\n|,/) 
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function aliasesToTextarea(value: Record<string, string>): string {
+  return Object.entries(value)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, alias]) => `${key}=${alias}`)
+    .join("\n");
+}
+
+function parseAliasesFromTextarea(text: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const lines = text.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const separator = line.includes("=") ? "=" : line.includes(":") ? ":" : null;
+    if (!separator) {
+      continue;
+    }
+
+    const [sourceRaw, ...rest] = line.split(separator);
+    const source = sourceRaw.trim();
+    const alias = rest.join(separator).trim();
+    if (!source || !alias) {
+      continue;
+    }
+    result[source] = alias;
+  }
+
+  return result;
 }
 
 function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
@@ -40,6 +75,7 @@ function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
     timezone: settings.timezone,
     mediaRootPaths: settings.media_root_paths.join("\n"),
     preferredPosterNames: settings.preferred_poster_names.join("\n"),
+    userAliases: aliasesToTextarea(settings.user_aliases),
     placeholderPath: settings.placeholder_path,
     historyRetentionDays: String(settings.history_retention_days),
   };
@@ -100,6 +136,14 @@ export function SettingsPage() {
     void loadSettings();
   }, []);
 
+  useEffect(() => {
+    const onRefresh = () => {
+      void loadSettings();
+    };
+    window.addEventListener("streamfuse:refresh", onRefresh);
+    return () => window.removeEventListener("streamfuse:refresh", onRefresh);
+  }, []);
+
   const updatedAtLabel = useMemo(() => {
     if (!settings?.updated_at) {
       return "Not saved yet";
@@ -129,6 +173,7 @@ export function SettingsPage() {
       timezone: form.timezone.trim(),
       media_root_paths: parseListFromTextarea(form.mediaRootPaths),
       preferred_poster_names: parseListFromTextarea(form.preferredPosterNames),
+      user_aliases: parseAliasesFromTextarea(form.userAliases),
       placeholder_path: form.placeholderPath.trim(),
       history_retention_days: Number(form.historyRetentionDays),
     };
@@ -176,7 +221,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
+      <header className="space-y-2 min-h-[72px]">
         <h2 className="font-display text-3xl text-white">Settings</h2>
         <p className="text-sm text-fg-muted">Configure providers, polling cadence, poster behavior, and retention.</p>
         <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Last update: {updatedAtLabel}</p>
@@ -345,6 +390,18 @@ export function SettingsPage() {
               placeholder="poster.jpg&#10;cover.jpg&#10;folder.jpg"
             />
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-card p-5">
+          <h3 className="font-display text-xl text-white">User Aliases</h3>
+          <p className="mb-3 text-sm text-fg-muted">Use one alias per line: <code className="text-fg">real_user=Display Name</code>.</p>
+          <textarea
+            rows={8}
+            className={inputClass}
+            value={form.userAliases}
+            onChange={(event) => setForm({ ...form, userAliases: event.target.value })}
+            placeholder="sil.g8=Sil\nalex_aalex93=Alex"
+          />
         </section>
 
         <div className="flex items-center gap-3">

@@ -1,0 +1,35 @@
+﻿{
+    "value":  [
+                  {
+                      "username":  "Marlene",
+                      "connection_id":  "FTP_0_5902",
+                      "client_version":  "Unknown",
+                      "remote_address":  "79.116.240.162:51269",
+                      "connection_time":  1775806418137,
+                      "last_activity":  1775806434916,
+                      "current_time":  1775806493926,
+                      "protocol":  "FTP",
+                      "command":  "LIST"
+                  },
+                  {
+                      "username":  "Marlene",
+                      "connection_id":  "FTP_0_5904",
+                      "client_version":  "Unknown",
+                      "remote_address":  "79.116.240.162:51318",
+                      "connection_time":  1775806433446,
+                      "last_activity":  1775806493532,
+                      "current_time":  1775806493926,
+                      "protocol":  "FTP",
+                      "active_transfers":  [
+                                               {
+                                                   "operation_type":  "download",
+                                                   "start_time":  1775806434101,
+                                                   "size":  215252992,
+                                                   "path":  "/multimedia/series/1883 (2021) {tmdb-118357}/Season 01/1883 - S01E01 - 1883.mkv"
+                                               }
+                                           ],
+                      "command":  "RETR"
+                  }
+              ],
+    "Count":  2
+}

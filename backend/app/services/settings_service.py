@@ -21,6 +21,7 @@ class SettingsService:
     KEY_TIMEZONE = "timezone"
     KEY_MEDIA_ROOT_PATHS = "media_root_paths"
     KEY_PREFERRED_POSTER_NAMES = "preferred_poster_names"
+    KEY_USER_ALIASES = "user_aliases"
     KEY_PLACEHOLDER_PATH = "placeholder_path"
     KEY_HISTORY_RETENTION_DAYS = "history_retention_days"
 
@@ -35,6 +36,7 @@ class SettingsService:
         KEY_TIMEZONE: "Display timezone",
         KEY_MEDIA_ROOT_PATHS: "Media root paths as JSON list",
         KEY_PREFERRED_POSTER_NAMES: "Preferred poster file names as JSON list",
+        KEY_USER_ALIASES: "User aliases as JSON object",
         KEY_PLACEHOLDER_PATH: "Placeholder image path",
         KEY_HISTORY_RETENTION_DAYS: "History retention in days",
     }
@@ -106,6 +108,9 @@ class SettingsService:
                     self._serialize_list(DEFAULT_PREFERRED_POSTER_NAMES),
                 )
             ),
+            user_aliases=self._parse_dict(
+                self._value_or_default(by_key, self.KEY_USER_ALIASES, "{}")
+            ),
             placeholder_path=self._value_or_default(
                 by_key,
                 self.KEY_PLACEHOLDER_PATH,
@@ -137,6 +142,8 @@ class SettingsService:
             self._set(self.KEY_MEDIA_ROOT_PATHS, self._serialize_list(payload.media_root_paths))
         if payload.preferred_poster_names is not None:
             self._set(self.KEY_PREFERRED_POSTER_NAMES, self._serialize_list(payload.preferred_poster_names))
+        if payload.user_aliases is not None:
+            self._set(self.KEY_USER_ALIASES, json.dumps(payload.user_aliases))
 
         if payload.placeholder_path is not None:
             self._set(self.KEY_PLACEHOLDER_PATH, payload.placeholder_path)
@@ -168,6 +175,24 @@ class SettingsService:
         except json.JSONDecodeError:
             pass
         return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
+
+    @staticmethod
+    def _parse_dict(raw: str) -> dict[str, str]:
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                cleaned: dict[str, str] = {}
+                for key, value in parsed.items():
+                    source = str(key).strip()
+                    alias = str(value).strip()
+                    if source and alias:
+                        cleaned[source] = alias
+                return cleaned
+        except json.JSONDecodeError:
+            return {}
+        return {}
 
     @staticmethod
     def _parse_csv(raw: str) -> list[str]:

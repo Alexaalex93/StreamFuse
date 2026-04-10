@@ -1,10 +1,15 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.api.v1.schemas.stats import OverviewStatsResponse, TopMediaResponse, TopUsersResponse
+from app.api.v1.schemas.stats import (
+    OverviewStatsResponse,
+    TopMediaResponse,
+    TopUsersResponse,
+    UserInsightsResponse,
+)
 from app.services.stats_service import StatsFilters, StatsService
 
 router = APIRouter(prefix="/stats")
@@ -54,3 +59,15 @@ def get_top_media(
     service = StatsService(db)
     data = service.get_top_media(StatsFilters(date_from=date_from, date_to=date_to), limit=limit)
     return TopMediaResponse(**data)
+
+
+@router.get("/users/insights", response_model=UserInsightsResponse)
+def get_user_insights(
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> UserInsightsResponse:
+    service = StatsService(db)
+    data = service.get_user_insights(StatsFilters(date_from=date_from, date_to=date_to), limit=limit)
+    return UserInsightsResponse(**data)

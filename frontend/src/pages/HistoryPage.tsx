@@ -65,36 +65,60 @@ export function HistoryPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const clearFilters = () => {
+    setText("");
+    setUserName("");
+    setSource("all");
+    setMediaType("all");
+    setDateFrom("");
+    setDateTo("");
+  };
 
-        const query = buildQuery({
-          user_name: userName || undefined,
-          source: source === "all" ? undefined : source,
-          media_type: mediaType === "all" ? undefined : mediaType,
-          date_from: toIsoDateStart(dateFrom),
-          date_to: toIsoDateEnd(dateTo),
-          limit: "500",
-        });
+  const fetchHistory = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const response = await fetch(`${getBackendBase()}/api/sessions/history${query}`);
-        if (!response.ok) {
-          throw new Error(`History endpoint failed (${response.status})`);
-        }
+      const query = buildQuery({
+        user_name: userName || undefined,
+        source: source === "all" ? undefined : source,
+        media_type: mediaType === "all" ? undefined : mediaType,
+        date_from: toIsoDateStart(dateFrom),
+        date_to: toIsoDateEnd(dateTo),
+        limit: "500",
+      });
 
-        const data = (await response.json()) as UnifiedSession[];
-        setRows(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load history");
-      } finally {
-        setLoading(false);
+      const response = await fetch(`${getBackendBase()}/api/sessions/history${query}`);
+      if (!response.ok) {
+        throw new Error(`History endpoint failed (${response.status})`);
       }
-    };
 
+      const data = (await response.json()) as UnifiedSession[];
+      setRows(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load history");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     void fetchHistory();
+  }, [userName, source, mediaType, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      void fetchHistory();
+    };
+    const onNewFilter = () => {
+      clearFilters();
+    };
+    window.addEventListener("streamfuse:refresh", onRefresh);
+    window.addEventListener("streamfuse:new-filter", onNewFilter);
+    return () => {
+      window.removeEventListener("streamfuse:refresh", onRefresh);
+      window.removeEventListener("streamfuse:new-filter", onNewFilter);
+    };
   }, [userName, source, mediaType, dateFrom, dateTo]);
 
   const filteredRows = useMemo(() => {
@@ -136,7 +160,7 @@ export function HistoryPage() {
 
   return (
     <div className="space-y-6 min-h-[760px]">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex min-h-[72px] flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-display text-3xl text-white">History</h2>
           <p className="text-sm text-fg-muted">Premium timeline for ended and stale sessions.</p>
@@ -174,14 +198,7 @@ export function HistoryPage() {
           onDateFromChange={setDateFrom}
           onDateToChange={setDateTo}
           onTextChange={setText}
-          onClear={() => {
-            setText("");
-            setUserName("");
-            setSource("all");
-            setMediaType("all");
-            setDateFrom("");
-            setDateTo("");
-          }}
+          onClear={clearFilters}
         />
 
         <section className="space-y-4">
@@ -217,7 +234,7 @@ export function HistoryPage() {
                   <div className="mt-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-white">{session.title || session.file_name || "Untitled"}</p>
-                      <p className="text-xs text-fg-muted">{session.user_name} · {formatDate(session.updated_at)}</p>
+                      <p className="text-xs text-fg-muted">{session.user_name} - {formatDate(session.updated_at)}</p>
                     </div>
                     <SourceBadge source={session.source} />
                   </div>
@@ -230,7 +247,7 @@ export function HistoryPage() {
           {!loading && !error && filteredRows.length > 0 ? (
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-card px-4 py-3">
               <p className="text-sm text-fg-muted">
-                Page {currentPage} / {totalPages} · {filteredRows.length} results
+                Page {currentPage} / {totalPages} - {filteredRows.length} results
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1}>
@@ -251,4 +268,3 @@ export function HistoryPage() {
     </div>
   );
 }
-

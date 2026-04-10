@@ -12,11 +12,13 @@ from app.persistence.repositories.unified_stream_session_repository import (
     SessionQueryFilters,
     UnifiedStreamSessionRepository,
 )
+from app.services.user_alias_service import UserAliasService
 
 
 class DashboardWidgetService:
-    def __init__(self, repository: UnifiedStreamSessionRepository) -> None:
+    def __init__(self, repository: UnifiedStreamSessionRepository, alias_service: UserAliasService) -> None:
         self.repository = repository
+        self.alias_service = alias_service
 
     def get_widget_payload(self, limit: int = 5) -> DashboardWidgetResponse:
         active_rows = self.repository.list_active(SessionQueryFilters(limit=1000))
@@ -32,7 +34,7 @@ class DashboardWidgetService:
             DashboardWidgetSession(
                 id=row.id,
                 title=row.title or row.file_name or "Untitled",
-                user_name=row.user_name,
+                user_name=self.alias_service.resolve(row.user_name),
                 source=row.source,
                 media_type=row.media_type,
                 bandwidth_bps=row.bandwidth_bps,

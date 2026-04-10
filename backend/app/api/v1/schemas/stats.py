@@ -58,3 +58,42 @@ class TopMediaItem(BaseModel):
 class TopMediaResponse(BaseModel):
     top_movies: list[TopMediaItem]
     top_series: list[TopMediaItem]
+
+
+class UserInsightsItem(BaseModel):
+    user_name: str
+    total_sessions: int
+    movie_sessions: int
+    episode_sessions: int
+    total_watch_hours: float
+    movie_watch_hours: float
+    episode_watch_hours: float
+    unique_titles_monthly: int
+    unique_movies_monthly: int
+    unique_series_monthly: int
+    last_seen_at: datetime | None
+
+
+class UserInsightsLeader(BaseModel):
+    user_name: str
+    value: float
+
+
+class UserInsightsLeaders(BaseModel):
+    most_sessions_user: UserInsightsLeader
+    most_watch_hours_user: UserInsightsLeader
+    most_movies_user: UserInsightsLeader
+    most_series_user: UserInsightsLeader
+
+
+class PeakHourPoint(BaseModel):
+    hour: int
+    sessions: int
+
+
+class UserInsightsResponse(BaseModel):
+    items: list[UserInsightsItem]
+    leaders: UserInsightsLeaders
+    peak_hours: list[PeakHourPoint]
+    timezone: str
+    play_count_rule: str

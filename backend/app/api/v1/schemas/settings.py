@@ -19,6 +19,7 @@ class StreamFuseSettingsResponse(BaseModel):
     timezone: str
     media_root_paths: list[str]
     preferred_poster_names: list[str]
+    user_aliases: dict[str, str]
     placeholder_path: str
     history_retention_days: int
     updated_at: datetime | None = None
@@ -39,6 +40,7 @@ class StreamFuseSettingsUpdate(BaseModel):
     timezone: str | None = None
     media_root_paths: list[str] | None = None
     preferred_poster_names: list[str] | None = None
+    user_aliases: dict[str, str] | None = None
     placeholder_path: str | None = None
     history_retention_days: int | None = None
 
@@ -86,4 +88,18 @@ class StreamFuseSettingsUpdate(BaseModel):
         if value is None:
             return None
         cleaned = [item.strip() for item in value if item.strip()]
+        return cleaned
+
+    @field_validator("user_aliases")
+    @classmethod
+    def validate_aliases(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        cleaned: dict[str, str] = {}
+        for key, alias in value.items():
+            source = str(key).strip()
+            target = str(alias).strip()
+            if not source or not target:
+                continue
+            cleaned[source] = target
         return cleaned

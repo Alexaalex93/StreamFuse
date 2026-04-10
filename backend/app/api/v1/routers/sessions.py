@@ -6,6 +6,7 @@ from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate, UnifiedStrea
 from app.domain.enums import StreamSource
 from app.persistence.repositories.unified_stream_session_repository import UnifiedStreamSessionRepository
 from app.services.session_service import SessionService
+from app.services.user_alias_service import UserAliasService
 
 router = APIRouter(prefix="/sessions")
 
@@ -17,8 +18,15 @@ def list_sessions(
     db: Session = Depends(get_db),
 ) -> list[UnifiedStreamSessionResponse]:
     service = SessionService(UnifiedStreamSessionRepository(db))
+    alias_service = UserAliasService(db)
     rows = service.list_active_sessions(limit=limit, source=source)
-    return [UnifiedStreamSessionResponse.model_validate(row) for row in rows]
+
+    items: list[UnifiedStreamSessionResponse] = []
+    for row in rows:
+        item = UnifiedStreamSessionResponse.model_validate(row)
+        item.user_name = alias_service.resolve(item.user_name)
+        items.append(item)
+    return items
 
 
 @router.post("", response_model=UnifiedStreamSessionResponse)
@@ -34,5 +42,12 @@ def create_session(
 @router.post("/mock", response_model=list[UnifiedStreamSessionResponse])
 def create_mock_sessions(db: Session = Depends(get_db)) -> list[UnifiedStreamSessionResponse]:
     service = SessionService(UnifiedStreamSessionRepository(db))
+    alias_service = UserAliasService(db)
     rows = service.insert_mock_sessions()
-    return [UnifiedStreamSessionResponse.model_validate(row) for row in rows]
+
+    items: list[UnifiedStreamSessionResponse] = []
+    for row in rows:
+        item = UnifiedStreamSessionResponse.model_validate(row)
+        item.user_name = alias_service.resolve(item.user_name)
+        items.append(item)
+    return items

@@ -10,13 +10,18 @@ from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate
 from app.domain.enums import MediaType, SessionStatus, StreamSource
 from app.main import app
 from app.persistence.db import Base
-from app.persistence.models import unified_stream_session  # noqa: F401
+from app.persistence.models import app_setting, unified_stream_session  # noqa: F401
+from app.persistence.models.app_setting import AppSettingModel
 from app.persistence.repositories.unified_stream_session_repository import UnifiedStreamSessionRepository
 from app.services.unified_session_service import UnifiedSessionService
 
 
 def _seed_data(session_local):
     db = session_local()
+    db.add(AppSettingModel(key="timezone", value="Europe/Madrid", description="timezone"))
+    db.add(AppSettingModel(key="user_aliases", value='{"alice":"Alicia"}', description="aliases"))
+    db.commit()
+
     service = UnifiedSessionService(UnifiedStreamSessionRepository(db))
     now = datetime.now(timezone.utc)
 
@@ -32,6 +37,7 @@ def _seed_data(session_local):
                 media_type=MediaType.MOVIE,
                 bandwidth_bps=12_000_000,
                 started_at=now - timedelta(days=2),
+                duration_ms=4_200_000,
             ),
             UnifiedStreamSessionCreate(
                 source=StreamSource.TAUTULLI,
@@ -44,6 +50,7 @@ def _seed_data(session_local):
                 bandwidth_bps=8_000_000,
                 started_at=now - timedelta(days=1),
                 ended_at=now - timedelta(days=1, hours=-1),
+                duration_ms=2_000_000,
             ),
         ]
     )
@@ -61,6 +68,7 @@ def _seed_data(session_local):
                 series_title="The Expanse",
                 bandwidth_bps=5_000_000,
                 started_at=now - timedelta(days=1),
+                duration_ms=1_200_000,
             ),
             UnifiedStreamSessionCreate(
                 source=StreamSource.SFTPGO,
@@ -75,6 +83,7 @@ def _seed_data(session_local):
                 started_at=now,
                 ended_at=now,
                 raw_payload={"lifecycle": "stale"},
+                duration_ms=800_000,
             ),
         ]
     )
@@ -108,14 +117,17 @@ def test_stats_endpoints_for_dashboard() -> None:
         overview = client.get("/api/stats/overview")
         users = client.get("/api/stats/users")
         media = client.get("/api/stats/media")
+        insights = client.get("/api/stats/users/insights")
 
         assert overview.status_code == 200
         assert users.status_code == 200
         assert media.status_code == 200
+        assert insights.status_code == 200
 
         overview_json = overview.json()
         users_json = users.json()
         media_json = media.json()
+        insights_json = insights.json()
 
         assert overview_json["total_sessions"] == 4
         assert overview_json["active_sessions"] == 2
@@ -132,11 +144,17 @@ def test_stats_endpoints_for_dashboard() -> None:
         assert {item["source"] for item in overview_json["source_distribution"]} == {"tautulli", "sftpgo"}
         assert len(overview_json["active_by_source"]) >= 1
 
-        assert users_json["items"][0]["user_name"] == "alice"
+        assert users_json["items"][0]["user_name"] == "Alicia"
         assert users_json["items"][0]["sessions"] >= 2
 
         assert len(media_json["top_movies"]) >= 1
         assert len(media_json["top_series"]) >= 1
+
+        assert insights_json["timezone"] == "Europe/Madrid"
+        assert insights_json["play_count_rule"] == "history_counts_every_session;unique_play_counts_once_per_user_title_per_month"
+        assert len(insights_json["items"]) >= 2
+        assert len(insights_json["peak_hours"]) == 24
+        assert insights_json["leaders"]["most_sessions_user"]["user_name"] in {"Alicia", "bob", "carol"}
     finally:
         app.dependency_overrides.clear()
 
@@ -181,4 +199,3 @@ def test_stats_filters_by_date_range() -> None:
         assert data["total_sessions"] < 4
     finally:
         app.dependency_overrides.clear()
-

@@ -79,6 +79,14 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
     [health],
   );
 
+  const onRefresh = () => {
+    window.dispatchEvent(new CustomEvent("streamfuse:refresh", { detail: { section: currentSection } }));
+  };
+
+  const onNewFilter = () => {
+    window.dispatchEvent(new CustomEvent("streamfuse:new-filter", { detail: { section: currentSection } }));
+  };
+
   return (
     <div className="min-h-screen bg-app-gradient text-fg">
       <div className="mx-auto grid min-h-screen max-w-[1440px] grid-cols-1 lg:grid-cols-[280px_1fr]">
@@ -145,8 +153,8 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
                 <p className="text-xs text-fg-muted">Premium visibility for media sessions and transfer activity.</p>
               </div>
               <div className="flex items-center gap-3">
-                <Button variant="ghost">Refresh</Button>
-                <Button variant="default">New Filter</Button>
+                <Button variant="ghost" onClick={onRefresh}>Refresh</Button>
+                <Button variant="default" onClick={onNewFilter}>New Filter</Button>
               </div>
             </div>
           </header>
@@ -157,4 +165,3 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
     </div>
   );
 }
-

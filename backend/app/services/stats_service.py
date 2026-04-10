@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import case, desc, distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.domain.enums import MediaType, SessionStatus
+from app.persistence.models.app_setting import AppSettingModel
 from app.persistence.models.unified_stream_session import UnifiedStreamSessionModel
+from app.services.user_alias_service import UserAliasService
 
 
 @dataclass(slots=True)
@@ -19,6 +22,8 @@ class StatsFilters:
 class StatsService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.alias_service = UserAliasService(db)
+        self.timezone = self._load_timezone()
 
     def get_overview(self, filters: StatsFilters) -> dict:
         totals_stmt = select(
@@ -208,7 +213,7 @@ class StatsService:
         rows = self.db.execute(stmt).all()
         return [
             {
-                "user_name": row.user_name or "unknown",
+                "user_name": self.alias_service.resolve(row.user_name),
                 "sessions": int(row.sessions or 0),
                 "active_sessions": int(row.active_sessions or 0),
                 "avg_bandwidth_bps": float(row.avg_bandwidth_bps) if row.avg_bandwidth_bps is not None else None,
@@ -223,6 +228,115 @@ class StatsService:
         return {
             "top_movies": movies,
             "top_series": series,
+        }
+
+    def get_user_insights(self, filters: StatsFilters, limit: int = 50) -> dict:
+        stmt = select(
+            UnifiedStreamSessionModel.user_name,
+            UnifiedStreamSessionModel.media_type,
+            UnifiedStreamSessionModel.title,
+            UnifiedStreamSessionModel.title_clean,
+            UnifiedStreamSessionModel.series_title,
+            UnifiedStreamSessionModel.file_path,
+            UnifiedStreamSessionModel.started_at,
+            UnifiedStreamSessionModel.ended_at,
+            UnifiedStreamSessionModel.duration_ms,
+            UnifiedStreamSessionModel.updated_at,
+        ).where(*self._where(filters))
+
+        rows = self.db.execute(stmt).all()
+
+        per_user: dict[str, dict] = {}
+        hour_counts = [0] * 24
+
+        for row in rows:
+            user_name = self.alias_service.resolve(row.user_name)
+            bucket = per_user.setdefault(
+                user_name,
+                {
+                    "user_name": user_name,
+                    "total_sessions": 0,
+                    "movie_sessions": 0,
+                    "episode_sessions": 0,
+                    "total_watch_ms": 0,
+                    "movie_watch_ms": 0,
+                    "episode_watch_ms": 0,
+                    "_unique_titles_monthly": set(),
+                    "_unique_movies_monthly": set(),
+                    "_unique_series_monthly": set(),
+                    "last_seen_at": None,
+                },
+            )
+
+            bucket["total_sessions"] += 1
+            watch_ms = self._resolve_watch_ms(row.duration_ms, row.started_at, row.ended_at)
+            bucket["total_watch_ms"] += watch_ms
+
+            month_key = self._month_key(row.started_at)
+            media_key = self._media_key(row.title_clean, row.title, row.file_path)
+            if month_key and media_key:
+                bucket["_unique_titles_monthly"].add((month_key, media_key))
+
+            if row.media_type == MediaType.MOVIE:
+                bucket["movie_sessions"] += 1
+                bucket["movie_watch_ms"] += watch_ms
+                if month_key and media_key:
+                    bucket["_unique_movies_monthly"].add((month_key, media_key))
+            elif row.media_type == MediaType.EPISODE:
+                bucket["episode_sessions"] += 1
+                bucket["episode_watch_ms"] += watch_ms
+                series_key = self._series_key(row.series_title, row.title_clean, row.title, row.file_path)
+                if month_key and series_key:
+                    bucket["_unique_series_monthly"].add((month_key, series_key))
+
+            if row.updated_at and (bucket["last_seen_at"] is None or row.updated_at > bucket["last_seen_at"]):
+                bucket["last_seen_at"] = row.updated_at
+
+            local_hour = self._local_hour(row.started_at)
+            if local_hour is not None:
+                hour_counts[local_hour] += 1
+
+        items = []
+        for stats in per_user.values():
+            items.append(
+                {
+                    "user_name": stats["user_name"],
+                    "total_sessions": stats["total_sessions"],
+                    "movie_sessions": stats["movie_sessions"],
+                    "episode_sessions": stats["episode_sessions"],
+                    "total_watch_hours": round(stats["total_watch_ms"] / 3_600_000, 2),
+                    "movie_watch_hours": round(stats["movie_watch_ms"] / 3_600_000, 2),
+                    "episode_watch_hours": round(stats["episode_watch_ms"] / 3_600_000, 2),
+                    "unique_titles_monthly": len(stats["_unique_titles_monthly"]),
+                    "unique_movies_monthly": len(stats["_unique_movies_monthly"]),
+                    "unique_series_monthly": len(stats["_unique_series_monthly"]),
+                    "last_seen_at": stats["last_seen_at"],
+                }
+            )
+
+        items.sort(key=lambda item: (item["total_sessions"], item["total_watch_hours"]), reverse=True)
+
+        leaders = {
+            "most_sessions_user": self._leader(items, "total_sessions"),
+            "most_watch_hours_user": self._leader(items, "total_watch_hours"),
+            "most_movies_user": self._leader(items, "unique_movies_monthly"),
+            "most_series_user": self._leader(items, "unique_series_monthly"),
+        }
+
+        peak_hours = [
+            {
+                "hour": hour,
+                "sessions": count,
+            }
+            for hour, count in enumerate(hour_counts)
+        ]
+
+        return {
+            "items": items[:limit],
+            "leaders": leaders,
+            "peak_hours": peak_hours,
+            "timezone": str(self.timezone),
+            "play_count_rule": "history_counts_every_session;unique_play_counts_once_per_user_title_per_month",
         }
 
     def _top_media_by_type(
@@ -270,6 +384,14 @@ class StatsService:
             for row in rows
         ]
 
+    def _load_timezone(self) -> ZoneInfo:
+        row = self.db.scalar(select(AppSettingModel).where(AppSettingModel.key == "timezone"))
+        value = (row.value.strip() if row and row.value else "UTC")
+        try:
+            return ZoneInfo(value)
+        except Exception:
+            return ZoneInfo("UTC")
+
     @staticmethod
     def _extract_shared_bytes(raw_payload: object, file_path: str | None) -> int:
         if not isinstance(raw_payload, dict):
@@ -303,6 +425,44 @@ class StatsService:
             return 0
 
         return 0
+
+    @staticmethod
+    def _resolve_watch_ms(duration_ms: int | None, started_at: datetime | None, ended_at: datetime | None) -> int:
+        if isinstance(duration_ms, int) and duration_ms > 0:
+            return duration_ms
+        if started_at and ended_at and ended_at > started_at:
+            return int((ended_at - started_at).total_seconds() * 1000)
+        return 0
+
+    @staticmethod
+    def _media_key(title_clean: str | None, title: str | None, file_path: str | None) -> str:
+        source = title_clean or title or file_path or "unknown"
+        return str(source).strip().lower()
+
+    @staticmethod
+    def _series_key(series_title: str | None, title_clean: str | None, title: str | None, file_path: str | None) -> str:
+        source = series_title or title_clean or title or file_path or "unknown"
+        return str(source).strip().lower()
+
+    def _month_key(self, started_at: datetime | None) -> str | None:
+        if started_at is None:
+            return None
+        return started_at.astimezone(self.timezone).strftime("%Y-%m")
+
+    def _local_hour(self, started_at: datetime | None) -> int | None:
+        if started_at is None:
+            return None
+        return started_at.astimezone(self.timezone).hour
+
+    @staticmethod
+    def _leader(items: list[dict], metric: str) -> dict:
+        if not items:
+            return {"user_name": "n/a", "value": 0}
+        winner = max(items, key=lambda item: item.get(metric, 0))
+        return {
+            "user_name": winner.get("user_name", "n/a"),
+            "value": winner.get(metric, 0),
+        }
 
     @staticmethod
     def _where(filters: StatsFilters) -> list:

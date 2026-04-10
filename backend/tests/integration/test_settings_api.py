@@ -48,6 +48,7 @@ def test_settings_defaults_and_update_roundtrip() -> None:
             "timezone": "Europe/Madrid",
             "media_root_paths": ["/media/movies", "/media/series"],
             "preferred_poster_names": ["poster.jpg", "folder.jpg"],
+            "user_aliases": {"alex_aalex93": "Alex", "sil.g8": "Sil"},
             "placeholder_path": "app/poster_resolver/assets/placeholder.svg",
             "history_retention_days": 45,
         }
@@ -62,6 +63,7 @@ def test_settings_defaults_and_update_roundtrip() -> None:
         assert updated_json["history_retention_days"] == payload["history_retention_days"]
         assert updated_json["media_root_paths"] == payload["media_root_paths"]
         assert updated_json["preferred_poster_names"] == payload["preferred_poster_names"]
+        assert updated_json["user_aliases"] == payload["user_aliases"]
         assert updated_json["tautulli_api_key_set"] is True
         assert updated_json["sftpgo_token_set"] is True
         assert payload["tautulli_api_key"] not in (updated_json["tautulli_api_key_masked"] or "")
@@ -72,6 +74,7 @@ def test_settings_defaults_and_update_roundtrip() -> None:
         refetched_json = fetched_again.json()
         assert refetched_json["tautulli_url"] == payload["tautulli_url"]
         assert refetched_json["sftpgo_logs_path"] == payload["sftpgo_logs_path"]
+        assert refetched_json["user_aliases"]["alex_aalex93"] == "Alex"
     finally:
         app.dependency_overrides.clear()
 

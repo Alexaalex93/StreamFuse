@@ -11,6 +11,7 @@ export type StreamFuseSettings = {
   timezone: string;
   media_root_paths: string[];
   preferred_poster_names: string[];
+  user_aliases: Record<string, string>;
   placeholder_path: string;
   history_retention_days: number;
   updated_at: string | null;
@@ -27,6 +28,7 @@ export type StreamFuseSettingsUpdate = {
   timezone?: string;
   media_root_paths?: string[];
   preferred_poster_names?: string[];
+  user_aliases?: Record<string, string>;
   placeholder_path?: string;
   history_retention_days?: number;
 };

@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -8,8 +8,18 @@ from app.api.v1.schemas.sessions import UnifiedStreamSessionResponse
 from app.domain.enums import MediaType, StreamSource
 from app.persistence.repositories.unified_stream_session_repository import UnifiedStreamSessionRepository
 from app.services.unified_session_service import UnifiedSessionService
+from app.services.user_alias_service import UserAliasService
 
 router = APIRouter()
+
+
+def _with_aliases(rows: list, alias_service: UserAliasService) -> list[UnifiedStreamSessionResponse]:
+    items: list[UnifiedStreamSessionResponse] = []
+    for row in rows:
+        item = UnifiedStreamSessionResponse.model_validate(row)
+        item.user_name = alias_service.resolve(item.user_name)
+        items.append(item)
+    return items
 
 
 @router.get("/active", response_model=list[UnifiedStreamSessionResponse])
@@ -23,6 +33,7 @@ def get_active_sessions(
     db: Session = Depends(get_db),
 ) -> list[UnifiedStreamSessionResponse]:
     service = UnifiedSessionService(UnifiedStreamSessionRepository(db))
+    alias_service = UserAliasService(db)
     rows = service.get_active_sessions(
         user_name=user_name,
         source=source,
@@ -31,7 +42,7 @@ def get_active_sessions(
         date_to=date_to,
         limit=limit,
     )
-    return [UnifiedStreamSessionResponse.model_validate(row) for row in rows]
+    return _with_aliases(rows, alias_service)
 
 
 @router.get("/history", response_model=list[UnifiedStreamSessionResponse])
@@ -45,6 +56,7 @@ def get_history(
     db: Session = Depends(get_db),
 ) -> list[UnifiedStreamSessionResponse]:
     service = UnifiedSessionService(UnifiedStreamSessionRepository(db))
+    alias_service = UserAliasService(db)
     rows = service.get_history(
         user_name=user_name,
         source=source,
@@ -53,4 +65,4 @@ def get_history(
         date_to=date_to,
         limit=limit,
     )
-    return [UnifiedStreamSessionResponse.model_validate(row) for row in rows]
+    return _with_aliases(rows, alias_service)

@@ -107,6 +107,13 @@ export function DashboardPage() {
   const [userQuery, setUserQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | StreamSource>("all");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | MediaType>("all");
+
+  const clearFilters = () => {
+    setUserQuery("");
+    setSourceFilter("all");
+    setMediaTypeFilter("all");
+  };
+
   const fetchData = async () => {
     try {
       setError(null);
@@ -163,6 +170,22 @@ export function DashboardPage() {
     };
   }, [userQuery, sourceFilter, mediaTypeFilter]);
 
+  useEffect(() => {
+    const onRefresh = () => {
+      void fetchData();
+    };
+    const onNewFilter = () => {
+      clearFilters();
+    };
+
+    window.addEventListener("streamfuse:refresh", onRefresh);
+    window.addEventListener("streamfuse:new-filter", onNewFilter);
+    return () => {
+      window.removeEventListener("streamfuse:refresh", onRefresh);
+      window.removeEventListener("streamfuse:new-filter", onNewFilter);
+    };
+  }, [userQuery, sourceFilter, mediaTypeFilter]);
+
   const derived = useMemo(() => {
     const sessionsActive = activeSessions.length;
     const usersActive = new Set(activeSessions.map((session) => session.user_name)).size;
@@ -199,6 +222,11 @@ export function DashboardPage() {
   return (
     <>
       <div className="space-y-6 min-h-[760px]">
+        <header className="min-h-[72px]">
+          <h2 className="font-display text-3xl text-white">Dashboard</h2>
+          <p className="text-sm text-fg-muted">Live monitoring of active sessions and recent activity.</p>
+        </header>
+
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
           <StatCard label="Active Sessions" value={String(derived.sessionsActive)} hint="Live right now" />
           <StatCard label="Active Users" value={String(derived.usersActive)} hint="Unique users" />
@@ -215,11 +243,7 @@ export function DashboardPage() {
           onUserQueryChange={setUserQuery}
           onSourceChange={setSourceFilter}
           onMediaTypeChange={setMediaTypeFilter}
-          onClear={() => {
-            setUserQuery("");
-            setSourceFilter("all");
-            setMediaTypeFilter("all");
-          }}
+          onClear={clearFilters}
         />
 
         <section className="rounded-2xl border border-white/10 bg-card p-5 shadow-premium">
@@ -275,9 +299,9 @@ export function DashboardPage() {
                       {session.user_name} - {session.ip_address || "n/a"}
                     </p>
                   </div>
-                  <div className="grid w-[112px] justify-items-center gap-1">
+                  <div className="grid w-[124px] justify-items-center gap-1">
                     <SourceBadge source={session.source} />
-                    <span className="text-xs text-fg-muted">{relativeFromNow(session.updated_at)}</span>
+                    <span className="text-xs text-fg-muted text-center">{relativeFromNow(session.updated_at)}</span>
                   </div>
                 </button>
               ))}
@@ -295,7 +319,3 @@ export function DashboardPage() {
     </>
   );
 }
-
-
-
-
