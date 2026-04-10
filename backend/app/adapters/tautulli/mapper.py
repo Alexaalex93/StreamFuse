@@ -69,6 +69,35 @@ def _format_bandwidth_human(kbps: int | None) -> str | None:
     return f"{kbps} Kbps"
 
 
+def _clean_display_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = value.replace("\ufffd", " ")
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    text = " ".join(text.split())
+    return text.strip()
+
+
+def _normalize_episode_title(series_title: str | None, episode_title: str | None, season: int | None, episode: int | None) -> str:
+    series = _clean_display_text(series_title)
+    title = _clean_display_text(episode_title)
+    code = ""
+    if season is not None or episode is not None:
+        s = f"S{season:02d}" if season is not None else "S00"
+        e = f"E{episode:02d}" if episode is not None else "E00"
+        code = f"{s}{e}"
+
+    if series and title.lower().startswith(series.lower()):
+        title = title[len(series):].lstrip(" -:|.")
+    if code and title.upper().startswith(code.upper()):
+        title = title[len(code):].lstrip(" -:|.")
+    if series and title.lower().startswith(series.lower()):
+        title = title[len(series):].lstrip(" -:|.")
+
+    parts = [part for part in [series or None, code or None, title or None] if part]
+    return " - ".join(parts) if parts else _clean_display_text(episode_title)
+
+
 def _source_session_id(payload: dict[str, Any], *, historical: bool) -> str:
     if historical:
         for key in ("id", "row_id", "history_id", "reference_id"):
@@ -103,7 +132,17 @@ def map_tautulli_payload(payload: dict[str, Any], *, historical: bool = False) -
         "episode_number": None,
     }
 
-    title = payload.get("full_title") or payload.get("title") or file_name
+    season_number = _to_int(payload.get("parent_media_index")) or parsed_series.get("season_number")
+    episode_number = _to_int(payload.get("media_index")) or parsed_series.get("episode_number")
+    series_title = payload.get("grandparent_title") or parsed_series.get("series_title")
+
+    if media_type == MediaType.EPISODE:
+        episode_base = payload.get("title") or payload.get("full_title") or file_name
+        title = _normalize_episode_title(str(series_title or ""), str(episode_base or ""), season_number, episode_number)
+    else:
+        title = payload.get("full_title") or payload.get("title") or file_name
+
+    title = _clean_display_text(str(title or "")) or None
     title_clean = clean_movie_title(str(title or ""))
 
     duration_ms = _to_int(payload.get("duration"))
@@ -134,9 +173,9 @@ def map_tautulli_payload(payload: dict[str, Any], *, historical: bool = False) -
         title=title,
         title_clean=title_clean,
         media_type=media_type,
-        series_title=(payload.get("grandparent_title") or parsed_series.get("series_title")),
-        season_number=_to_int(payload.get("parent_media_index")) or parsed_series.get("season_number"),
-        episode_number=_to_int(payload.get("media_index")) or parsed_series.get("episode_number"),
+        series_title=series_title,
+        season_number=season_number,
+        episode_number=episode_number,
         file_path=file_path,
         file_name=file_name,
         poster_path=episode_poster if media_type == MediaType.EPISODE else default_poster,

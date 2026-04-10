@@ -54,16 +54,27 @@ function cardSubtitle(session: UnifiedSession): string | null {
     return null;
   }
 
-  const series = (session.series_title || "").trim();
-  const title = (session.title || "").replace(/\uFFFD/g, " ").trim();
+  const series = (session.series_title || "").replace(/\uFFFD/g, " ").trim();
+  const rawTitle = (session.title || "").replace(/\uFFFD/g, " ").trim();
   const code = formatEpisodeCode(session);
 
-  if (/S\d{1,2}E\d{1,3}/i.test(title)) {
-    return title;
+  let episodeTitle = rawTitle;
+  if (series && episodeTitle.toLowerCase().startsWith(series.toLowerCase())) {
+    episodeTitle = episodeTitle.slice(series.length).replace(/^\s*[-:|.]\s*/, "");
+  }
+  if (code && episodeTitle.toUpperCase().startsWith(code.toUpperCase())) {
+    episodeTitle = episodeTitle.slice(code.length).replace(/^\s*[-:|.]\s*/, "");
+  }
+  if (series && episodeTitle.toLowerCase().startsWith(series.toLowerCase())) {
+    episodeTitle = episodeTitle.slice(series.length).replace(/^\s*[-:|.]\s*/, "");
   }
 
-  const parts = [series || null, code || null, title && title !== series ? title : null].filter(Boolean);
-  return parts.length > 0 ? parts.join(" - ") : code;
+  const parts = [series || null, code || null, episodeTitle || null].filter(Boolean);
+  if (parts.length === 0) {
+    return code;
+  }
+
+  return parts.join(" - ");
 }
 
 function extractBitrate(session: UnifiedSession): string {
@@ -186,4 +197,5 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     </article>
   );
 }
+
 

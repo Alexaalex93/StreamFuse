@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
@@ -54,11 +54,11 @@ function normalizeIpAddress(ip: string | null): string {
   return trimmed;
 }
 
-function dedupeSftpgoSessions(sessions: UnifiedSession[]): UnifiedSession[] {
+function dedupeTransferSessions(sessions: UnifiedSession[]): UnifiedSession[] {
   const byKey = new Map<string, UnifiedSession>();
 
   for (const session of sessions) {
-    if (session.source !== "sftpgo") {
+    if (session.source !== "sftpgo" && session.source !== "samba") {
       byKey.set(`${session.source}-${session.source_session_id}`, session);
       continue;
     }
@@ -72,7 +72,7 @@ function dedupeSftpgoSessions(sessions: UnifiedSession[]): UnifiedSession[] {
       continue;
     }
 
-    const key = `sftpgo-${user}-${ip}-${filePath}`;
+    const key = `${session.source}-${user}-${ip}-${filePath}`;
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, session);
@@ -108,6 +108,37 @@ export function DashboardPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | StreamSource>("all");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | MediaType>("all");
 
+  const orderByUserRef = useRef<Map<string, number>>(new Map());
+  const nextOrderIndexRef = useRef(0);
+
+  const orderActiveSessionsStable = (sessions: UnifiedSession[]): UnifiedSession[] => {
+    for (const session of sessions) {
+      const userKey = (session.user_name || "unknown").trim().toLowerCase();
+      if (!orderByUserRef.current.has(userKey)) {
+        orderByUserRef.current.set(userKey, nextOrderIndexRef.current);
+        nextOrderIndexRef.current += 1;
+      }
+    }
+
+    return [...sessions].sort((a, b) => {
+      const keyA = (a.user_name || "unknown").trim().toLowerCase();
+      const keyB = (b.user_name || "unknown").trim().toLowerCase();
+      const orderA = orderByUserRef.current.get(keyA) ?? Number.MAX_SAFE_INTEGER;
+      const orderB = orderByUserRef.current.get(keyB) ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      const tsA = Date.parse(a.updated_at || "") || 0;
+      const tsB = Date.parse(b.updated_at || "") || 0;
+      if (tsA !== tsB) {
+        return tsB - tsA;
+      }
+
+      return `${a.source}-${a.source_session_id}`.localeCompare(`${b.source}-${b.source_session_id}`);
+    });
+  };
+
   const clearFilters = () => {
     setUserQuery("");
     setSourceFilter("all");
@@ -142,9 +173,10 @@ export function DashboardPage() {
       const historyData = (await historyResponse.json()) as UnifiedSession[];
       const overviewData = (await overviewResponse.json()) as OverviewStats;
 
-      const dedupedActive = dedupeSftpgoSessions(activeData);
+      const dedupedActive = dedupeTransferSessions(activeData);
+      const stableActive = orderActiveSessionsStable(dedupedActive);
 
-      setActiveSessions(dedupedActive);
+      setActiveSessions(stableActive);
       setRecentSessions(historyData);
       setTotalSharedHuman(overviewData.total_shared_human || "0 B");
       setLastUpdated(new Date());
@@ -319,3 +351,4 @@ export function DashboardPage() {
     </>
   );
 }
+
