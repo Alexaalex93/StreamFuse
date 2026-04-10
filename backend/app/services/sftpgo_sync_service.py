@@ -96,13 +96,15 @@ class SFTPGoSyncService:
                 errors += 1
                 logger.exception("Failed to map/store SFTPGo payload")
 
+        cleaned_invalid = self._cleanup_invalid_active_sessions(seen_ids)
         stale_marked = self._mark_stale_sessions(seen_ids)
 
         return {
             "active_imported": imported,
+            "cleaned_invalid": cleaned_invalid,
             "stale_marked": stale_marked,
             "errors": errors,
-            "total_processed": imported + stale_marked,
+            "total_processed": imported + cleaned_invalid + stale_marked,
         }
 
     def _group_download_connections(
@@ -162,6 +164,31 @@ class SFTPGoSyncService:
 
         return list(grouped.values())
 
+
+    def _cleanup_invalid_active_sessions(self, active_ids: set[str]) -> int:
+        now = datetime.now(UTC)
+        rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
+        pruned = 0
+
+        for row in rows:
+            if row.source_session_id in active_ids:
+                continue
+
+            file_path = (row.file_path or "").strip()
+            if file_path and self._looks_like_media_file(file_path):
+                continue
+
+            payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
+            payload["lifecycle"] = "invalid_pruned"
+            row.status = SessionStatus.ENDED
+            row.ended_at = now
+            row.raw_payload = payload
+            pruned += 1
+
+        if pruned:
+            self.session_service.repository.db.commit()
+
+        return pruned
     def _mark_stale_sessions(self, active_ids: set[str]) -> int:
         now = datetime.now(UTC)
         stale_threshold = now - timedelta(seconds=self.stale_seconds)
@@ -485,4 +512,5 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
 

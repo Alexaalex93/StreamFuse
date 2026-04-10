@@ -388,3 +388,48 @@ def test_sftpgo_merges_same_download_across_ports() -> None:
         assert "/peliculas/2 Fast 2 Furious" in (rows[0].file_path or "")
     finally:
         db.close()
+
+def test_sftpgo_cleans_invalid_active_sessions() -> None:
+    session_local = _setup_db()
+    settings = _make_settings()
+
+    db = session_local()
+    try:
+        service = SessionService(UnifiedStreamSessionRepository(db))
+
+        service.create_session(
+            build_sftpgo_session_payload(
+                source_session_id="legacy-invalid-1",
+                connection={
+                    "username": "legacy",
+                    "ip_address": "10.0.0.1",
+                    "protocol": "ftp",
+                },
+                related_logs=[],
+                status=SessionStatus.ACTIVE,
+                bandwidth_bps=None,
+                poster_path=None,
+                media_info=None,
+            )
+        )
+
+        sync = SFTPGoSyncService(
+            client=SFTPGoClient(_EphemeralProvider()),
+            session_service=service,
+            poster_resolver=PosterResolver(settings),
+            stale_seconds=300,
+        )
+
+        result = asyncio.run(sync.poll_once(log_limit=10))
+
+        cleaned = db.scalar(
+            select(UnifiedStreamSessionModel).where(
+                UnifiedStreamSessionModel.source_session_id == "legacy-invalid-1"
+            )
+        )
+
+        assert result["cleaned_invalid"] >= 1
+        assert cleaned is not None
+        assert cleaned.status == SessionStatus.ENDED
+    finally:
+        db.close()
