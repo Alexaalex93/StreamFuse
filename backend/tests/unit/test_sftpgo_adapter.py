@@ -429,7 +429,7 @@ def test_sftpgo_cleans_invalid_active_sessions() -> None:
         )
 
         assert result["cleaned_invalid"] >= 1
-        assert cleaned is not None
-        assert cleaned.status == SessionStatus.ENDED
+        assert cleaned is None
     finally:
         db.close()
+

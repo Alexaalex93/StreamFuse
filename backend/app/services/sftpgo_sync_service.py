@@ -6,10 +6,13 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
+
 from app.adapters.sftpgo.client import SFTPGoClient
 from app.adapters.sftpgo.mapper import build_sftpgo_session_payload
 from app.domain.enums import SessionStatus, StreamSource
 from app.parsers.mediainfo_parser import parse_mediainfo_for_media
+from app.persistence.models.unified_stream_session import UnifiedStreamSessionModel
 from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
 
@@ -23,10 +26,21 @@ _MEDIA_FILE_EXTENSIONS = {
     ".mov",
     ".m4v",
     ".ts",
+    ".m2ts",
+    ".mts",
     ".wmv",
     ".flv",
     ".webm",
+    ".mpg",
+    ".mpeg",
+    ".vob",
     ".iso",
+    ".3gp",
+    ".3g2",
+    ".ogv",
+    ".rmvb",
+    ".divx",
+    ".xvid",
 }
 
 
@@ -45,8 +59,12 @@ class SFTPGoSyncService:
         self.stale_seconds = stale_seconds
         self.path_mappings = self._parse_path_mappings(path_mappings or [])
         self._last_sample: dict[str, tuple[int, datetime]] = {}
+        self._active_session_ids_by_key: dict[str, str] = {}
+        self._key_by_session_id: dict[str, str] = {}
 
     async def poll_once(self, log_limit: int = 200) -> dict[str, int]:
+        self._rebuild_active_session_cache()
+
         active_connections = await self.client.fetch_active_connections()
         logs = await self.client.fetch_transfer_logs(limit=log_limit)
 
@@ -60,7 +78,8 @@ class SFTPGoSyncService:
 
         for group in grouped_connections:
             try:
-                source_session_id = group["source_session_id"]
+                key = group["logical_key"]
+                source_session_id = self._resolve_session_id_for_key(key)
                 if not source_session_id:
                     errors += 1
                     continue
@@ -68,10 +87,13 @@ class SFTPGoSyncService:
                 seen_ids.add(source_session_id)
                 connection = dict(group["connection"])
                 related_logs = group["logs"]
+
                 media_path = self._normalize_media_path_for_local_fs(group["file_path"])
                 if not media_path or not self._looks_like_media_file(media_path):
                     continue
+
                 connection["file_path"] = media_path
+                connection["streamfuse_logical_key"] = key
 
                 bandwidth_bps = self._estimate_bandwidth_bps(
                     source_session_id,
@@ -97,14 +119,18 @@ class SFTPGoSyncService:
                 logger.exception("Failed to map/store SFTPGo payload")
 
         cleaned_invalid = self._cleanup_invalid_active_sessions(seen_ids)
+        cleaned_history_noise = self._purge_invalid_history_noise()
         stale_marked = self._mark_stale_sessions(seen_ids)
+
+        self._rebuild_active_session_cache()
 
         return {
             "active_imported": imported,
             "cleaned_invalid": cleaned_invalid,
+            "cleaned_history_noise": cleaned_history_noise,
             "stale_marked": stale_marked,
             "errors": errors,
-            "total_processed": imported + cleaned_invalid + stale_marked,
+            "total_processed": imported + cleaned_invalid + cleaned_history_noise + stale_marked,
         }
 
     def _group_download_connections(
@@ -115,6 +141,9 @@ class SFTPGoSyncService:
         grouped: dict[str, dict[str, Any]] = {}
 
         for connection in active_connections:
+            if not self._is_download_connection(connection):
+                continue
+
             related_logs = self._correlate_logs(connection, log_index)
 
             media_path = self._resolve_file_path(connection, related_logs)
@@ -129,6 +158,9 @@ class SFTPGoSyncService:
                 or _best_log_field(related_logs, "username")
                 or "unknown"
             )
+            if not username.strip():
+                continue
+
             ip_value = str(
                 connection.get("ip_address")
                 or connection.get("remote_address")
@@ -137,20 +169,18 @@ class SFTPGoSyncService:
                 or ""
             )
             normalized_ip = self._normalize_ip(ip_value)
-            key = self._group_key(username, normalized_ip, media_path)
+            if not normalized_ip:
+                continue
 
-            current = grouped.get(key)
+            logical_key = self._group_key(username, normalized_ip, media_path)
+
+            current = grouped.get(logical_key)
             if current is None:
-                source_session_id = self._aggregate_session_id(username, normalized_ip, media_path)
-                grouped[key] = {
-                    "source_session_id": source_session_id,
+                grouped[logical_key] = {
+                    "logical_key": logical_key,
                     "file_path": media_path,
                     "logs": list(related_logs),
-                    "connection": self._connection_snapshot(
-                        connection,
-                        media_path,
-                        normalized_ip,
-                    ),
+                    "connection": self._connection_snapshot(connection, media_path, normalized_ip),
                 }
                 continue
 
@@ -164,9 +194,7 @@ class SFTPGoSyncService:
 
         return list(grouped.values())
 
-
     def _cleanup_invalid_active_sessions(self, active_ids: set[str]) -> int:
-        now = datetime.now(UTC)
         rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
         pruned = 0
 
@@ -178,17 +206,40 @@ class SFTPGoSyncService:
             if file_path and self._looks_like_media_file(file_path):
                 continue
 
-            payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
-            payload["lifecycle"] = "invalid_pruned"
-            row.status = SessionStatus.ENDED
-            row.ended_at = now
-            row.raw_payload = payload
+            self.session_service.repository.db.delete(row)
+            self._drop_session_from_caches(row.source_session_id)
             pruned += 1
 
         if pruned:
             self.session_service.repository.db.commit()
 
         return pruned
+
+    def _purge_invalid_history_noise(self) -> int:
+        stmt = select(UnifiedStreamSessionModel).where(
+            UnifiedStreamSessionModel.source == StreamSource.SFTPGO,
+            UnifiedStreamSessionModel.status != SessionStatus.ACTIVE,
+        )
+        rows = list(self.session_service.repository.db.scalars(stmt).all())
+        removed = 0
+
+        for row in rows:
+            file_path = (row.file_path or "").strip()
+            title = (row.title or "").strip().lower()
+            is_noise_title = title.startswith("ftp ") or title == "n/a" or title == ""
+            is_media = bool(file_path and self._looks_like_media_file(file_path))
+            if is_media and not is_noise_title:
+                continue
+
+            self.session_service.repository.db.delete(row)
+            self._drop_session_from_caches(row.source_session_id)
+            removed += 1
+
+        if removed:
+            self.session_service.repository.db.commit()
+
+        return removed
+
     def _mark_stale_sessions(self, active_ids: set[str]) -> int:
         now = datetime.now(UTC)
         stale_threshold = now - timedelta(seconds=self.stale_seconds)
@@ -209,12 +260,49 @@ class SFTPGoSyncService:
             row.status = SessionStatus.ENDED
             row.ended_at = now
             row.raw_payload = payload
+            self._drop_session_from_caches(row.source_session_id)
             stale_count += 1
 
         if stale_count:
             self.session_service.repository.db.commit()
 
         return stale_count
+
+    def _rebuild_active_session_cache(self) -> None:
+        self._active_session_ids_by_key = {}
+        self._key_by_session_id = {}
+
+        rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
+        for row in rows:
+            raw_payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
+            connection = raw_payload.get("connection") if isinstance(raw_payload.get("connection"), dict) else {}
+            logical_key = str(connection.get("streamfuse_logical_key") or "").strip()
+            if not logical_key:
+                continue
+
+            self._active_session_ids_by_key[logical_key] = row.source_session_id
+            self._key_by_session_id[row.source_session_id] = logical_key
+
+    def _resolve_session_id_for_key(self, logical_key: str) -> str:
+        existing = self._active_session_ids_by_key.get(logical_key)
+        if existing:
+            return existing
+
+        stamp = int(datetime.now(UTC).timestamp() * 1000)
+        slug = abs(hash(logical_key))
+        source_session_id = f"sftpgo-{slug}-{stamp}"
+        self._active_session_ids_by_key[logical_key] = source_session_id
+        self._key_by_session_id[source_session_id] = logical_key
+        return source_session_id
+
+    def _drop_session_from_caches(self, source_session_id: str) -> None:
+        logical_key = self._key_by_session_id.pop(source_session_id, None)
+        if not logical_key:
+            return
+
+        current = self._active_session_ids_by_key.get(logical_key)
+        if current == source_session_id:
+            self._active_session_ids_by_key.pop(logical_key, None)
 
     def _index_logs(self, logs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         by_conn: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -318,6 +406,15 @@ class SFTPGoSyncService:
         if path:
             return str(path)
 
+        transfers = connection.get("active_transfers")
+        if isinstance(transfers, list):
+            for transfer in transfers:
+                if not isinstance(transfer, dict):
+                    continue
+                candidate = transfer.get("path") or transfer.get("file_path")
+                if candidate:
+                    return str(candidate)
+
         for log in reversed(logs):
             value = log.get("file_path") or log.get("path")
             if value:
@@ -338,7 +435,6 @@ class SFTPGoSyncService:
         if not path:
             return None
 
-        # 1) Explicit admin mappings from settings UI.
         for source_prefix, target_prefix in self.path_mappings:
             source = source_prefix.rstrip("/")
             target = target_prefix.rstrip("/")
@@ -346,14 +442,12 @@ class SFTPGoSyncService:
                 tail = path[len(source) :].lstrip("/")
                 return f"{target}/{tail}" if tail else target
 
-        # 2) Already mapped to allowed roots.
         roots = [root for root in self.poster_resolver.allowed_roots if root]
         for root in roots:
             root_posix = root.as_posix().rstrip("/")
             if root_posix and path.startswith(root_posix):
                 return path
 
-        # 3) Suffix mapping by root folder name (peliculas/series).
         for root in roots:
             root_posix = root.as_posix().rstrip("/")
             root_name = root.name.strip().lower()
@@ -387,19 +481,50 @@ class SFTPGoSyncService:
     def _group_key(username: str, ip_address: str, file_path: str) -> str:
         return f"{username.strip().lower()}|{ip_address.strip()}|{file_path.strip().lower()}"
 
-    @staticmethod
-    def _aggregate_session_id(username: str, ip_address: str, file_path: str) -> str:
-        user = username.strip().lower() or "unknown"
-        ip = ip_address.strip() or "unknown"
-        path = file_path.strip().lower().replace(" ", "_")
-        return f"sftpgo-{user}-{ip}-{path}"
-
     def _looks_like_download(self, connection: dict[str, Any], logs: list[dict[str, Any]]) -> bool:
         if any(self._is_download_log(log) for log in logs):
             return True
 
+        transfers = connection.get("active_transfers")
+        if isinstance(transfers, list):
+            for transfer in transfers:
+                if not isinstance(transfer, dict):
+                    continue
+                op = str(transfer.get("operation_type") or "").lower()
+                if op == "download":
+                    return True
+
         info = str(connection.get("info") or "").lower()
-        return bool("dl:" in info or "download" in info)
+        if "dl:" in info or "download" in info:
+            return True
+
+        return False
+
+    @staticmethod
+    def _is_download_connection(connection: dict[str, Any]) -> bool:
+        command = str(connection.get("command") or "").upper()
+        if command == "RETR":
+            return True
+
+        transfers = connection.get("active_transfers")
+        if isinstance(transfers, list):
+            if any(
+                isinstance(transfer, dict)
+                and str(transfer.get("operation_type") or "").lower() == "download"
+                for transfer in transfers
+            ):
+                return True
+
+        info = str(connection.get("info") or "").lower()
+        if "dl:" in info or "download" in info:
+            return True
+
+        file_path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
+        bytes_sent = _to_int(connection.get("bytes_sent")) or 0
+        if file_path and bytes_sent > 0:
+            return True
+
+        return False
 
     def _connection_snapshot(
         self,
@@ -512,5 +637,4 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
-
 
