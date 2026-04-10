@@ -361,8 +361,19 @@ def _to_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
-    if isinstance(value, str) and value.isdigit():
-        value = int(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.isdigit():
+            value = int(raw)
+        else:
+            try:
+                iso = raw.replace("Z", "+00:00")
+                parsed = datetime.fromisoformat(iso)
+                return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            except ValueError:
+                return None
     if isinstance(value, (int, float)):
         if value > 1_000_000_000_000:
             return datetime.fromtimestamp(value / 1000.0, tz=UTC)
@@ -397,6 +408,7 @@ def _format_bps(bps: int | None) -> str | None:
     if mbps >= 1:
         return f"{mbps:.1f} Mbps"
     return f"{(bps / 1000):.1f} Kbps"
+
 
 
 
