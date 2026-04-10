@@ -354,3 +354,8 @@ def _first_non_empty(*values: str | None) -> str | None:
 
 
 
+
+
+
+def _normalize_match_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())

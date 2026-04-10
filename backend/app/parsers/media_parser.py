@@ -73,7 +73,7 @@ def parse_series_context(path: str) -> dict[str, object]:
             season_index = index
             season_number = int(season_match.group(1))
             if index > 0:
-                series_title = _normalize_tokens(parts[index - 1])
+                series_title = clean_movie_title(parts[index - 1])
             is_episode = True
             break
 
@@ -91,13 +91,13 @@ def parse_series_context(path: str) -> dict[str, object]:
         break
 
     if series_title is None and season_index is None and len(parts) >= 2 and is_episode:
-        series_title = _normalize_tokens(parts[-2])
+        series_title = clean_movie_title(parts[-2])
 
     lowered_parts = [part.lower() for part in parts]
     if series_title is None and "series" in lowered_parts:
         series_idx = lowered_parts.index("series")
         if series_idx + 1 < len(parts):
-            series_title = _normalize_tokens(parts[series_idx + 1])
+            series_title = clean_movie_title(parts[series_idx + 1])
             is_episode = True
 
     return {
@@ -125,4 +125,5 @@ def detect_media_type(path: str) -> MediaType:
         return MediaType.MOVIE
 
     return MediaType.OTHER
+
 
