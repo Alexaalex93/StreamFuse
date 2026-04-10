@@ -54,16 +54,16 @@ function cardSubtitle(session: UnifiedSession): string | null {
     return null;
   }
 
-  const episodeName = session.title && session.series_title && session.title !== session.series_title ? session.title : null;
+  const series = (session.series_title || "").trim();
+  const title = (session.title || "").replace(/\uFFFD/g, " ").trim();
   const code = formatEpisodeCode(session);
 
-  if (episodeName && code) {
-    return `${episodeName} · ${code}`;
+  if (/S\d{1,2}E\d{1,3}/i.test(title)) {
+    return title;
   }
-  if (episodeName) {
-    return episodeName;
-  }
-  return code;
+
+  const parts = [series || null, code || null, title && title !== series ? title : null].filter(Boolean);
+  return parts.length > 0 ? parts.join(" - ") : code;
 }
 
 function extractBitrate(session: UnifiedSession): string {
@@ -186,3 +186,4 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     </article>
   );
 }
+

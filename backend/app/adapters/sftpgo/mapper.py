@@ -58,6 +58,41 @@ def _earliest_log_datetime(logs: list[dict[str, Any]]) -> datetime | None:
     return earliest
 
 
+def _clean_display_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = value.replace("\ufffd", " ")
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    text = " ".join(text.split())
+    return text.strip()
+
+
+def _episode_code(season_number: int | None, episode_number: int | None) -> str:
+    if season_number is None and episode_number is None:
+        return ""
+    s = f"S{season_number:02d}" if season_number is not None else "S00"
+    e = f"E{episode_number:02d}" if episode_number is not None else "E00"
+    return f"{s}{e}"
+
+
+def _format_episode_title(series_title: str | None, episode_title: str | None, season_number: int | None, episode_number: int | None) -> str:
+    clean_series = _clean_display_text(series_title)
+    clean_episode = _clean_display_text(episode_title)
+    code = _episode_code(season_number, episode_number)
+
+    parts: list[str] = []
+    if clean_series:
+        parts.append(clean_series)
+    if code:
+        parts.append(code)
+    if clean_episode and clean_episode != clean_series:
+        parts.append(clean_episode)
+
+    if parts:
+        return " - ".join(parts)
+    return clean_episode or clean_series or "Untitled"
+
+
 def build_sftpgo_session_payload(
     *,
     source_session_id: str,
@@ -85,8 +120,20 @@ def build_sftpgo_session_payload(
         "episode_number": None,
     }
 
-    raw_title = media_info.title if media_info and media_info.title else (file_name or source_session_id)
-    title = clean_movie_title(raw_title)
+    series_title = _clean_display_text(str(series_ctx.get("series_title") or "")) or None
+    season_number = series_ctx.get("season_number")
+    episode_number = series_ctx.get("episode_number")
+
+    media_title = _clean_display_text(media_info.title) if media_info and media_info.title else ""
+    fallback_title = clean_movie_title(file_name or source_session_id)
+    base_title = media_title or _clean_display_text(fallback_title)
+
+    if media_type == MediaType.EPISODE:
+        title = _format_episode_title(series_title, base_title, season_number, episode_number)
+        title_clean = _clean_display_text(title)
+    else:
+        title = _clean_display_text(base_title)
+        title_clean = _clean_display_text(clean_movie_title(title or fallback_title))
 
     started_at = (
         _to_datetime(connection.get("start_time"))
@@ -112,11 +159,11 @@ def build_sftpgo_session_payload(
         )
         or None,
         title=title,
-        title_clean=title,
+        title_clean=title_clean,
         media_type=media_type,
-        series_title=series_ctx.get("series_title"),
-        season_number=series_ctx.get("season_number"),
-        episode_number=series_ctx.get("episode_number"),
+        series_title=series_title,
+        season_number=season_number,
+        episode_number=episode_number,
         file_path=file_path,
         file_name=file_name,
         poster_path=poster_path,

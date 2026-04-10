@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 import re
 from dataclasses import asdict, dataclass
@@ -92,6 +93,9 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
         root = ElementTree.parse(nfo_file).getroot()
     except (ElementTree.ParseError, OSError, RuntimeError):
         logger.warning("Failed to parse nfo xml", extra={"path": str(nfo_file)})
+        fallback_title = _extract_title_from_raw_nfo(nfo_file)
+        if fallback_title:
+            return MediaInfoSummary(title=fallback_title)
         return None
 
     video = root.find(".//fileinfo/streamdetails/video")
@@ -118,7 +122,7 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
     )
 
     return MediaInfoSummary(
-        title=_first_non_empty(_find_text(root, "title"), _find_text(root, "originaltitle")),
+        title=_sanitize_title_text(_first_non_empty(_find_text(root, "title"), _find_text(root, "originaltitle"))),
         duration_ms=duration_ms,
         overall_bitrate_bps=overall_bitrate_bps,
         video_bitrate_bps=overall_bitrate_bps,
@@ -169,6 +173,28 @@ def _find_nfo_file(media_file: Path) -> Path | None:
         if candidate.exists() and candidate.is_file():
             return candidate
     return None
+
+
+def _extract_title_from_raw_nfo(nfo_file: Path) -> str | None:
+    try:
+        raw = nfo_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    match = re.search(r"<title>\s*(.*?)\s*</title>", raw, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+
+    value = html.unescape(match.group(1) or "")
+    return _sanitize_title_text(value)
+
+
+def _sanitize_title_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.replace("\ufffd", " ").replace("\u00c2", "")
+    cleaned = " ".join(cleaned.split())
+    return cleaned or None
 
 
 def _find_track(root: ElementTree.Element, track_type: str) -> ElementTree.Element | None:
@@ -308,6 +334,9 @@ def _first_non_empty(*values: str | None) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
+
+
 
 
 

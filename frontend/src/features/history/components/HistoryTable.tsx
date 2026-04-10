@@ -52,15 +52,16 @@ function rowSubtitle(session: UnifiedSession): string {
     return session.file_path || "n/a";
   }
 
+  const series = (session.series_title || "").trim();
+  const title = (session.title || "").replace(/\uFFFD/g, " ").trim();
   const code = episodeCode(session);
-  const episodeTitle = session.title && session.series_title && session.title !== session.series_title ? session.title : null;
-  const line = [episodeTitle, code].filter(Boolean).join(" · ");
 
-  if (line) {
-    return line;
+  if (/S\d{1,2}E\d{1,3}/i.test(title)) {
+    return title;
   }
 
-  return session.file_path || "n/a";
+  const line = [series || null, code || null, title && title !== series ? title : null].filter(Boolean).join(" - ");
+  return line || session.file_path || "n/a";
 }
 
 function toMbpsTextFromBps(value: number): string {
@@ -195,3 +196,4 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
     </div>
   );
 }
+
