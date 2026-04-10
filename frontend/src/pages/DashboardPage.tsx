@@ -34,6 +34,66 @@ function buildQuery(params: Record<string, string | undefined>): string {
   return text ? `?${text}` : "";
 }
 
+function normalizeIpAddress(ip: string | null): string {
+  if (!ip) {
+    return "";
+  }
+
+  const trimmed = ip.trim();
+  const bracket = /^\[(.*)](?::\d+)?$/.exec(trimmed);
+  if (bracket) {
+    return bracket[1];
+  }
+
+  const parts = trimmed.split(":");
+  if (parts.length === 2 && /^\d+$/.test(parts[1])) {
+    return parts[0];
+  }
+
+  return trimmed;
+}
+
+function dedupeSftpgoSessions(sessions: UnifiedSession[]): UnifiedSession[] {
+  const byKey = new Map<string, UnifiedSession>();
+
+  for (const session of sessions) {
+    if (session.source !== "sftpgo") {
+      byKey.set(`${session.source}-${session.source_session_id}`, session);
+      continue;
+    }
+
+    const filePath = (session.file_path || "").trim().toLowerCase();
+    const ip = normalizeIpAddress(session.ip_address).toLowerCase();
+    const user = (session.user_name || "").trim().toLowerCase();
+
+    if (!filePath || !ip || !user) {
+      byKey.set(`${session.source}-${session.source_session_id}`, session);
+      continue;
+    }
+
+    const key = `sftpgo-${user}-${ip}-${filePath}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, session);
+      continue;
+    }
+
+    const existingTs = Date.parse(existing.updated_at || "") || 0;
+    const currentTs = Date.parse(session.updated_at || "") || 0;
+
+    if (currentTs > existingTs) {
+      byKey.set(key, session);
+      continue;
+    }
+
+    if (currentTs === existingTs && (session.bandwidth_bps || 0) > (existing.bandwidth_bps || 0)) {
+      byKey.set(key, session);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
 export function DashboardPage() {
   const [activeSessions, setActiveSessions] = useState<UnifiedSession[]>([]);
   const [recentSessions, setRecentSessions] = useState<UnifiedSession[]>([]);
@@ -68,7 +128,9 @@ export function DashboardPage() {
       }
       const historyData = (await historyResponse.json()) as UnifiedSession[];
 
-      setActiveSessions(activeData);
+      const dedupedActive = dedupeSftpgoSessions(activeData);
+
+      setActiveSessions(dedupedActive);
       setRecentSessions(historyData);
       setLastUpdated(new Date());
     } catch (err) {
@@ -224,6 +286,3 @@ export function DashboardPage() {
     </>
   );
 }
-
-
-

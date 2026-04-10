@@ -64,6 +64,9 @@ class SFTPGoSyncService:
 
     async def poll_once(self, log_limit: int = 200) -> dict[str, int]:
         self._rebuild_active_session_cache()
+        cleaned_duplicate_active = self._collapse_duplicate_active_sessions()
+        if cleaned_duplicate_active:
+            self._rebuild_active_session_cache()
 
         active_connections = await self.client.fetch_active_connections()
         logs = await self.client.fetch_transfer_logs(limit=log_limit)
@@ -126,11 +129,12 @@ class SFTPGoSyncService:
 
         return {
             "active_imported": imported,
+            "cleaned_duplicate_active": cleaned_duplicate_active,
             "cleaned_invalid": cleaned_invalid,
             "cleaned_history_noise": cleaned_history_noise,
             "stale_marked": stale_marked,
             "errors": errors,
-            "total_processed": imported + cleaned_invalid + cleaned_history_noise + stale_marked,
+            "total_processed": imported + cleaned_duplicate_active + cleaned_invalid + cleaned_history_noise + stale_marked,
         }
 
     def _group_download_connections(
@@ -193,6 +197,67 @@ class SFTPGoSyncService:
             )
 
         return list(grouped.values())
+
+    def _collapse_duplicate_active_sessions(self) -> int:
+        rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
+        grouped: dict[str, list[UnifiedStreamSessionModel]] = defaultdict(list)
+
+        for row in rows:
+            key = self._logical_key_for_row(row)
+            if not key:
+                continue
+            grouped[key].append(row)
+
+        removed = 0
+        for dup_rows in grouped.values():
+            if len(dup_rows) < 2:
+                continue
+
+            sorted_rows = sorted(
+                dup_rows,
+                key=lambda item: (_as_utc(item.updated_at) or datetime.min.replace(tzinfo=UTC), item.id),
+                reverse=True,
+            )
+            keep = sorted_rows[0]
+            keep_key = self._logical_key_for_row(keep)
+
+            for stale in sorted_rows[1:]:
+                self.session_service.repository.db.delete(stale)
+                self._drop_session_from_caches(stale.source_session_id)
+                removed += 1
+
+            if keep_key:
+                self._active_session_ids_by_key[keep_key] = keep.source_session_id
+                self._key_by_session_id[keep.source_session_id] = keep_key
+
+        if removed:
+            self.session_service.repository.db.commit()
+
+        return removed
+
+    def _logical_key_for_row(self, row: UnifiedStreamSessionModel) -> str:
+        raw_payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
+        connection = raw_payload.get("connection") if isinstance(raw_payload.get("connection"), dict) else {}
+        cached_key = str(connection.get("streamfuse_logical_key") or "").strip()
+        if cached_key:
+            return cached_key
+
+        file_path = (row.file_path or "").strip()
+        user_name = (row.user_name or "").strip()
+        if not file_path or not user_name:
+            return ""
+
+        ip_value = str(
+            row.ip_address
+            or connection.get("ip_address")
+            or connection.get("remote_address")
+            or ""
+        )
+        normalized_ip = self._normalize_ip(ip_value)
+        if not normalized_ip:
+            return ""
+
+        return self._group_key(user_name, normalized_ip, file_path)
 
     def _cleanup_invalid_active_sessions(self, active_ids: set[str]) -> int:
         rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
@@ -274,9 +339,7 @@ class SFTPGoSyncService:
 
         rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
         for row in rows:
-            raw_payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
-            connection = raw_payload.get("connection") if isinstance(raw_payload.get("connection"), dict) else {}
-            logical_key = str(connection.get("streamfuse_logical_key") or "").strip()
+            logical_key = self._logical_key_for_row(row)
             if not logical_key:
                 continue
 
@@ -637,4 +700,8 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+
+
 

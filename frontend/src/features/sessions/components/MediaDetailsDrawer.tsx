@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { UnifiedSession } from "@/types/session";
 
@@ -13,29 +13,56 @@ import { ProgressBar } from "./ProgressBar";
 const FALLBACK_POSTER =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect width='100%25' height='100%25' fill='%23111b2f'/><text x='50%25' y='50%25' fill='%2394a3b8' font-size='18' text-anchor='middle' dominant-baseline='middle'>No poster</text></svg>";
 
-function formatMediaInfoBitrate(session: UnifiedSession): string {
+function formatBpsToHuman(bps: number): string {
+  const mbps = bps / 1_000_000;
+  if (mbps >= 1) {
+    return `${Math.round(mbps)} Mbps`;
+  }
+  return `${Math.round(bps / 1000)} Kbps`;
+}
+
+function formatSessionBitrate(session: UnifiedSession): string {
   const raw = session.raw_payload;
-  if (!raw || typeof raw !== "object") {
-    return "n/a";
+  if (raw && typeof raw === "object") {
+    const map = raw as Record<string, unknown>;
+    const mediaInfo = map.media_info as Record<string, unknown> | undefined;
+
+    const bpsFromMedia =
+      typeof mediaInfo?.video_bitrate_bps === "number"
+        ? mediaInfo.video_bitrate_bps
+        : typeof mediaInfo?.overall_bitrate_bps === "number"
+          ? mediaInfo.overall_bitrate_bps
+          : null;
+
+    if (typeof bpsFromMedia === "number" && bpsFromMedia > 0) {
+      return formatBpsToHuman(bpsFromMedia);
+    }
+
+    const kbps =
+      typeof map.stream_bitrate === "number"
+        ? map.stream_bitrate
+        : typeof map.bitrate === "number"
+          ? map.bitrate
+          : null;
+
+    if (typeof kbps === "number" && kbps > 0) {
+      return formatBpsToHuman(kbps * 1000);
+    }
   }
 
-  const mediaInfo = (raw as Record<string, unknown>).media_info;
-  if (!mediaInfo || typeof mediaInfo !== "object") {
-    return "n/a";
+  if (typeof session.bandwidth_bps === "number" && session.bandwidth_bps > 0) {
+    return formatBpsToHuman(session.bandwidth_bps);
   }
 
-  const map = mediaInfo as Record<string, unknown>;
-  const bitrate =
-    typeof map.video_bitrate_bps === "number"
-      ? map.video_bitrate_bps
-      : typeof map.overall_bitrate_bps === "number"
-        ? map.overall_bitrate_bps
-        : null;
+  return "N/A";
+}
 
-  if (!bitrate) {
-    return "n/a";
+function upperValue(value: string | number | null | undefined, uppercase = true): string {
+  if (value == null || value === "") {
+    return "N/A";
   }
-  return `${Math.round(bitrate / 1_000_000)} Mbps`;
+  const text = String(value);
+  return uppercase ? text.toUpperCase() : text;
 }
 
 type MediaDetailsDrawerProps = {
@@ -105,15 +132,15 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4">
                 <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Technical Snapshot</p>
                 <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-fg-muted">
-                  <p><span className="text-white">Type:</span> {session.media_type}</p>
-                  <p><span className="text-white">IP:</span> {session.ip_address || "n/a"}</p>
-                  <p><span className="text-white">Resolution:</span> {session.resolution || "n/a"}</p>
-                  <p><span className="text-white">Video codec:</span> {session.video_codec || "n/a"}</p>
-                  <p><span className="text-white">Audio codec:</span> {session.audio_codec || "n/a"}</p>
-                  <p><span className="text-white">Transcode:</span> {session.transcode_decision || "n/a"}</p>
-                  <p><span className="text-white">Bitrate:</span> {formatMediaInfoBitrate(session)}</p>
-                  <p><span className="text-white">Client:</span> {session.client_name || "n/a"}</p>
-                  <p><span className="text-white">Player:</span> {session.player_name || "n/a"}</p>
+                  <p><span className="text-white">Type:</span> {upperValue(session.media_type)}</p>
+                  <p><span className="text-white">IP:</span> {upperValue(session.ip_address)}</p>
+                  <p><span className="text-white">Resolution:</span> {upperValue(session.resolution)}</p>
+                  <p><span className="text-white">Video codec:</span> {upperValue(session.video_codec)}</p>
+                  <p><span className="text-white">Audio codec:</span> {upperValue(session.audio_codec)}</p>
+                  <p><span className="text-white">Transcode:</span> {upperValue(session.transcode_decision)}</p>
+                  <p><span className="text-white">Bitrate:</span> {formatSessionBitrate(session)}</p>
+                  <p><span className="text-white">Client:</span> {upperValue(session.client_name, false)}</p>
+                  <p><span className="text-white">Player:</span> {upperValue(session.player_name, false)}</p>
                 </div>
 
                 <div className="mt-3">

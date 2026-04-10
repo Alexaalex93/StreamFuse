@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from xml.etree import ElementTree
@@ -29,10 +30,28 @@ def parse_mediainfo_for_media(media_file_path: str | None) -> MediaInfoSummary |
         return None
 
     media_file = Path(media_file_path)
-    xml_file = _find_mediainfo_xml(media_file)
-    if xml_file is None:
-        return None
 
+    xml_summary: MediaInfoSummary | None = None
+    xml_file = _find_mediainfo_xml(media_file)
+    if xml_file is not None:
+        xml_summary = _parse_mediainfo_xml(xml_file)
+
+    nfo_summary: MediaInfoSummary | None = None
+    nfo_file = _find_nfo_file(media_file)
+    if nfo_file is not None:
+        nfo_summary = _parse_nfo_xml(nfo_file)
+
+    if xml_summary is None and nfo_summary is None:
+        return None
+    if xml_summary is None:
+        return nfo_summary
+    if nfo_summary is None:
+        return xml_summary
+
+    return _merge_summary(primary=xml_summary, fallback=nfo_summary)
+
+
+def _parse_mediainfo_xml(xml_file: Path) -> MediaInfoSummary | None:
     try:
         root = ElementTree.parse(xml_file).getroot()
     except (ElementTree.ParseError, OSError, RuntimeError):
@@ -46,15 +65,15 @@ def parse_mediainfo_for_media(media_file_path: str | None) -> MediaInfoSummary |
     width = _to_int(_find_text(video_track, "Width"))
     height = _to_int(_find_text(video_track, "Height"))
 
-    summary = MediaInfoSummary(
+    return MediaInfoSummary(
         title=_first_non_empty(
             _find_text(general_track, "Movie"),
             _find_text(general_track, "Title"),
         ),
-        duration_ms=_seconds_text_to_ms(_find_text(general_track, "Duration")),
-        overall_bitrate_bps=_to_int(_find_text(general_track, "OverallBitRate")),
-        video_bitrate_bps=_to_int(_find_text(video_track, "BitRate")),
-        resolution=f"{width}x{height}" if width and height else None,
+        duration_ms=_duration_to_ms(_find_text(general_track, "Duration")),
+        overall_bitrate_bps=_to_bitrate_bps(_find_text(general_track, "OverallBitRate")),
+        video_bitrate_bps=_to_bitrate_bps(_find_text(video_track, "BitRate")),
+        resolution=_format_resolution(width, height),
         video_codec=_first_non_empty(
             _find_text(video_track, "Format"),
             _find_text(video_track, "CodecID"),
@@ -66,7 +85,61 @@ def parse_mediainfo_for_media(media_file_path: str | None) -> MediaInfoSummary |
         frame_rate=_to_float(_find_text(video_track, "FrameRate")),
         audio_channels=_to_int(_find_text(audio_track, "Channels")),
     )
-    return summary
+
+
+def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
+    try:
+        root = ElementTree.parse(nfo_file).getroot()
+    except (ElementTree.ParseError, OSError, RuntimeError):
+        logger.warning("Failed to parse nfo xml", extra={"path": str(nfo_file)})
+        return None
+
+    video = root.find(".//fileinfo/streamdetails/video")
+    if video is None:
+        video = root.find(".//streamdetails/video")
+
+    audio = root.find(".//fileinfo/streamdetails/audio")
+    if audio is None:
+        audio = root.find(".//streamdetails/audio")
+
+    width = _to_int(_find_text(video, "width"))
+    height = _to_int(_find_text(video, "height"))
+
+    runtime_minutes = _to_float(_first_non_empty(_find_text(root, "runtime"), _find_text(root, "duration")))
+    duration_ms = int(runtime_minutes * 60_000) if runtime_minutes is not None else None
+
+    overall_bitrate_bps = _to_bitrate_bps(
+        _first_non_empty(
+            _find_text(video, "bitrate"),
+            _find_text(root, "bitrate"),
+        )
+    )
+
+    return MediaInfoSummary(
+        title=_first_non_empty(_find_text(root, "title"), _find_text(root, "originaltitle")),
+        duration_ms=duration_ms,
+        overall_bitrate_bps=overall_bitrate_bps,
+        video_bitrate_bps=overall_bitrate_bps,
+        resolution=_format_resolution(width, height),
+        video_codec=_first_non_empty(_find_text(video, "codec"), _find_text(video, "format")),
+        audio_codec=_first_non_empty(_find_text(audio, "codec"), _find_text(audio, "format")),
+        frame_rate=_to_float(_find_text(video, "framerate")),
+        audio_channels=_to_int(_first_non_empty(_find_text(audio, "channels"), _find_text(audio, "channel"))),
+    )
+
+
+def _merge_summary(primary: MediaInfoSummary, fallback: MediaInfoSummary) -> MediaInfoSummary:
+    return MediaInfoSummary(
+        title=primary.title or fallback.title,
+        duration_ms=primary.duration_ms or fallback.duration_ms,
+        overall_bitrate_bps=primary.overall_bitrate_bps or fallback.overall_bitrate_bps,
+        video_bitrate_bps=primary.video_bitrate_bps or fallback.video_bitrate_bps,
+        resolution=primary.resolution or fallback.resolution,
+        video_codec=primary.video_codec or fallback.video_codec,
+        audio_codec=primary.audio_codec or fallback.audio_codec,
+        frame_rate=primary.frame_rate or fallback.frame_rate,
+        audio_channels=primary.audio_channels or fallback.audio_channels,
+    )
 
 
 def _find_mediainfo_xml(media_file: Path) -> Path | None:
@@ -75,6 +148,20 @@ def _find_mediainfo_xml(media_file: Path) -> Path | None:
         media_file.with_suffix(".mediainfo.xml"),
         parent / "mediainfo.xml",
         parent / f"{media_file.stem}.mediainfo.xml",
+        parent / f"{media_file.stem}-mediainfo.xml",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _find_nfo_file(media_file: Path) -> Path | None:
+    parent = media_file.parent
+    candidates = [
+        parent / "movie.nfo",
+        parent / f"{media_file.stem}.nfo",
+        parent / "tvshow.nfo",
     ]
     for candidate in candidates:
         if candidate.exists() and candidate.is_file():
@@ -102,39 +189,116 @@ def _find_default_audio_track(root: ElementTree.Element) -> ElementTree.Element 
     return first_audio
 
 
-def _find_text(track: ElementTree.Element | None, tag_name: str) -> str | None:
-    if track is None:
+def _find_text(node: ElementTree.Element | None, tag_name: str) -> str | None:
+    if node is None:
         return None
-    node = track.find(f"./{{*}}{tag_name}")
-    if node is None or node.text is None:
+    if tag_name in {"title", "originaltitle", "runtime", "duration", "bitrate"}:
+        child = node.find(f"./{tag_name}")
+    else:
+        child = node.find(f"./{{*}}{tag_name}")
+        if child is None:
+            child = node.find(f"./{tag_name}")
+    if child is None or child.text is None:
         return None
-    value = node.text.strip()
+    value = child.text.strip()
     return value or None
 
 
 def _to_int(value: str | None) -> int | None:
-    if not value:
+    number = _extract_number(value)
+    if number is None:
         return None
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return None
+    return int(number)
 
 
 def _to_float(value: str | None) -> float | None:
+    number = _extract_number(value)
+    return number
+
+
+def _to_bitrate_bps(value: str | None) -> int | None:
     if not value:
         return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+
+    number = _extract_number(value)
+    if number is None:
         return None
 
+    lower = value.lower()
+    if "gb/s" in lower or "gbit" in lower:
+        return int(number * 1_000_000_000)
+    if "mb/s" in lower or "mbit" in lower:
+        return int(number * 1_000_000)
+    if "kb/s" in lower or "kbit" in lower:
+        return int(number * 1_000)
 
-def _seconds_text_to_ms(value: str | None) -> int | None:
-    as_float = _to_float(value)
+    if number >= 1_000_000:
+        return int(number)
+    return int(number * 1_000)
+
+
+def _duration_to_ms(value: str | None) -> int | None:
+    if not value:
+        return None
+
+    lower = value.lower()
+    if any(token in lower for token in ("h", "min", "ms", "s")):
+        hours = _extract_named_number(lower, "h") or 0
+        minutes = _extract_named_number(lower, "min") or 0
+        seconds = _extract_named_number(lower, "s") or 0
+        milliseconds = _extract_named_number(lower, "ms") or 0
+        total_ms = int(hours * 3_600_000 + minutes * 60_000 + seconds * 1_000 + milliseconds)
+        if total_ms > 0:
+            return total_ms
+
+    as_float = _extract_number(value)
     if as_float is None:
         return None
+
+    if as_float > 10_000:
+        return int(as_float)
     return int(as_float * 1000)
+
+
+def _extract_named_number(text: str, unit: str) -> float | None:
+    if unit == "s":
+        pattern = r"(\d+(?:[\.,]\d+)?)\s*s(?![a-z])"
+    elif unit == "ms":
+        pattern = r"(\d+(?:[\.,]\d+)?)\s*ms"
+    else:
+        pattern = rf"(\d+(?:[\.,]\d+)?)\s*{re.escape(unit)}"
+
+    match = re.search(pattern, text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _extract_number(value: str | None) -> float | None:
+    if not value:
+        return None
+
+    cleaned = re.sub(r"(?<=\d)[\s_,](?=\d)", "", value)
+    match = re.search(r"\d+(?:[\.,]\d+)?", cleaned)
+    if not match:
+        return None
+
+    token = match.group(0).replace(",", ".")
+    try:
+        return float(token)
+    except ValueError:
+        return None
+
+
+def _format_resolution(width: int | None, height: int | None) -> str | None:
+    if height is None:
+        return None
+    if height >= 2160:
+        return "4K"
+    return f"{height}p"
 
 
 def _first_non_empty(*values: str | None) -> str | None:
@@ -142,3 +306,5 @@ def _first_non_empty(*values: str | None) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
+

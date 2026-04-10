@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>2 Fast 2 Furious</title>
+  <runtime>107</runtime>
+  <fileinfo>
+    <streamdetails>
+      <video>
+        <codec>hevc</codec>
+        <width>1920</width>
+        <height>1080</height>
+        <bitrate>10620</bitrate>
+      </video>
+      <audio>
+        <codec>dca</codec>
+        <channels>6</channels>
+      </audio>
+    </streamdetails>
+  </fileinfo>
+</movie>

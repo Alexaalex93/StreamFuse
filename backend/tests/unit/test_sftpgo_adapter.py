@@ -433,3 +433,73 @@ def test_sftpgo_cleans_invalid_active_sessions() -> None:
     finally:
         db.close()
 
+
+class _NoopProvider(SFTPGoProvider):
+    async def fetch_active_connections(self):
+        return []
+
+    async def fetch_transfer_logs(self, limit: int = 200):
+        return []
+
+
+def test_sftpgo_collapses_duplicate_active_rows_from_previous_runs() -> None:
+    session_local = _setup_db()
+    settings = _make_settings()
+
+    db = session_local()
+    try:
+        service = SessionService(UnifiedStreamSessionRepository(db))
+
+        base_connection = {
+            "username": "marlene",
+            "ip_address": "79.117.96.46",
+            "protocol": "ftp",
+            "file_path": "/peliculas/2 Fast 2 Furious (2003) {tmdb-584}/2 Fast 2 Furious (2003) {tmdb-584}.mkv",
+            "streamfuse_logical_key": "marlene|79.117.96.46|/peliculas/2 fast 2 furious (2003) {tmdb-584}/2 fast 2 furious (2003) {tmdb-584}.mkv",
+        }
+
+        payload_a = build_sftpgo_session_payload(
+            source_session_id="dup-a",
+            connection=base_connection,
+            related_logs=[],
+            status=SessionStatus.ACTIVE,
+            bandwidth_bps=1_000_000,
+            poster_path=None,
+            media_info=None,
+        )
+
+        payload_b = build_sftpgo_session_payload(
+            source_session_id="dup-b",
+            connection={**base_connection, "bytes_sent": 9_999_999},
+            related_logs=[],
+            status=SessionStatus.ACTIVE,
+            bandwidth_bps=2_000_000,
+            poster_path=None,
+            media_info=None,
+        )
+
+        service.create_session(payload_a)
+        service.create_session(payload_b)
+
+        sync = SFTPGoSyncService(
+            client=SFTPGoClient(_NoopProvider()),
+            session_service=service,
+            poster_resolver=PosterResolver(settings),
+            stale_seconds=300,
+        )
+
+        result = asyncio.run(sync.poll_once(log_limit=10))
+
+        rows = list(
+            db.scalars(
+                select(UnifiedStreamSessionModel).where(
+                    UnifiedStreamSessionModel.source == StreamSource.SFTPGO,
+                    UnifiedStreamSessionModel.status == SessionStatus.ACTIVE,
+                )
+            ).all()
+        )
+
+        assert result["cleaned_duplicate_active"] == 1
+        assert len(rows) == 1
+    finally:
+        db.close()
