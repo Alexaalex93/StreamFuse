@@ -1,4 +1,4 @@
-﻿import { ChangeEvent } from "react";
+import { ChangeEvent } from "react";
 
 import { MediaType, StreamSource } from "@/types/domain";
 
@@ -70,6 +70,7 @@ export function HistoryFilterPanel({
             <option value="all">All sources</option>
             <option value="tautulli">Tautulli</option>
             <option value="sftpgo">SFTPGo</option>
+            <option value="samba">Samba</option>
           </select>
         </label>
 
@@ -116,3 +117,6 @@ export function HistoryFilterPanel({
     </aside>
   );
 }
+
+
+

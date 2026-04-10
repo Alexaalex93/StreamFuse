@@ -85,7 +85,16 @@ function extractBitrateText(session: UnifiedSession): string {
 export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-premium">
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm">
+        <colgroup>
+          <col style={{ width: "34%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "8%" }} />
+        </colgroup>
         <thead className="bg-white/[0.03] text-left text-fg-muted">
           <tr>
             <th className="px-4 py-3 font-medium">Session</th>
@@ -161,3 +170,7 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
     </div>
   );
 }
+
+
+
+

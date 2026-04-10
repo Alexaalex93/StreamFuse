@@ -3,6 +3,7 @@ import logging
 
 from app.core.config import get_settings
 from app.jobs.import_tautulli import run_once as run_tautulli_import
+from app.jobs.poll_samba import run_once as run_samba_poll
 from app.jobs.poll_sftpgo import run_once as run_sftpgo_poll
 from app.persistence.db import SessionLocal
 from app.persistence.repositories.app_setting_repository import AppSettingRepository
@@ -24,9 +25,10 @@ class BackgroundSyncRunner:
             try:
                 tautulli_result = await run_tautulli_import(include_history=False)
                 sftpgo_result = await run_sftpgo_poll()
+                samba_result = await run_samba_poll()
                 logger.info(
                     "Background sync cycle completed",
-                    extra={"tautulli": tautulli_result, "sftpgo": sftpgo_result},
+                    extra={"tautulli": tautulli_result, "sftpgo": sftpgo_result, "samba": samba_result},
                 )
             except Exception:
                 logger.exception("Background sync cycle failed")

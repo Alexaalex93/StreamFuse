@@ -1,4 +1,4 @@
-﻿export type StreamSource = "tautulli" | "sftpgo";
+export type StreamSource = "tautulli" | "sftpgo" | "samba";
 
 export type SessionStatus = "active" | "ended" | "error";
 

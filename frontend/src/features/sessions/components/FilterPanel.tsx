@@ -1,4 +1,4 @@
-﻿import { ChangeEvent } from "react";
+import { ChangeEvent } from "react";
 
 import { MediaType, StreamSource } from "@/types/domain";
 
@@ -46,6 +46,7 @@ export function FilterPanel({
             <option value="all">All sources</option>
             <option value="tautulli">Tautulli</option>
             <option value="sftpgo">SFTPGo</option>
+            <option value="samba">Samba</option>
           </select>
         </label>
 

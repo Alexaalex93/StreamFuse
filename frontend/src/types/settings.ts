@@ -7,6 +7,9 @@ export type StreamFuseSettings = {
   sftpgo_token_masked: string | null;
   sftpgo_logs_path: string | null;
   sftpgo_path_mappings: string[];
+  samba_enabled: boolean;
+  samba_status_json_path: string | null;
+  samba_path_mappings: string[];
   polling_frequency_seconds: number;
   timezone: string;
   media_root_paths: string[];
@@ -24,6 +27,9 @@ export type StreamFuseSettingsUpdate = {
   sftpgo_token?: string;
   sftpgo_logs_path?: string | null;
   sftpgo_path_mappings?: string[];
+  samba_enabled?: boolean;
+  samba_status_json_path?: string | null;
+  samba_path_mappings?: string[];
   polling_frequency_seconds?: number;
   timezone?: string;
   media_root_paths?: string[];

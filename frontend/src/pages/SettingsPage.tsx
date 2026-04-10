@@ -13,6 +13,9 @@ type SettingsFormState = {
   sftpgoToken: string;
   sftpgoLogsPath: string;
   sftpgoPathMappings: string;
+  sambaEnabled: boolean;
+  sambaStatusJsonPath: string;
+  sambaPathMappings: string;
   pollingFrequencySeconds: string;
   timezone: string;
   mediaRootPaths: string;
@@ -71,6 +74,9 @@ function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
     sftpgoToken: "",
     sftpgoLogsPath: settings.sftpgo_logs_path ?? "",
     sftpgoPathMappings: settings.sftpgo_path_mappings.join("\n"),
+    sambaEnabled: settings.samba_enabled,
+    sambaStatusJsonPath: settings.samba_status_json_path ?? "",
+    sambaPathMappings: settings.samba_path_mappings.join("\n"),
     pollingFrequencySeconds: String(settings.polling_frequency_seconds),
     timezone: settings.timezone,
     mediaRootPaths: settings.media_root_paths.join("\n"),
@@ -169,6 +175,9 @@ export function SettingsPage() {
       sftpgo_url: form.sftpgoUrl.trim(),
       sftpgo_logs_path: form.sftpgoLogsPath.trim(),
       sftpgo_path_mappings: parseListFromTextarea(form.sftpgoPathMappings),
+      samba_enabled: form.sambaEnabled,
+      samba_status_json_path: form.sambaStatusJsonPath.trim(),
+      samba_path_mappings: parseListFromTextarea(form.sambaPathMappings),
       polling_frequency_seconds: Number(form.pollingFrequencySeconds),
       timezone: form.timezone.trim(),
       media_root_paths: parseListFromTextarea(form.mediaRootPaths),
@@ -241,12 +250,7 @@ export function SettingsPage() {
 
           <div>
             <label className={labelClass} htmlFor="tautulli-url">Tautulli URL</label>
-            <input
-              id="tautulli-url"
-              className={inputClass}
-              value={form.tautulliUrl}
-              onChange={(event) => setForm({ ...form, tautulliUrl: event.target.value })}
-            />
+            <input id="tautulli-url" className={inputClass} value={form.tautulliUrl} onChange={(event) => setForm({ ...form, tautulliUrl: event.target.value })} />
           </div>
 
           <div>
@@ -255,11 +259,7 @@ export function SettingsPage() {
               id="tautulli-api-key"
               type="password"
               className={inputClass}
-              placeholder={
-                settings.tautulli_api_key_set
-                  ? `Configured (${settings.tautulli_api_key_masked ?? "hidden"}) - leave empty to keep`
-                  : "Not configured"
-              }
+              placeholder={settings.tautulli_api_key_set ? `Configured (${settings.tautulli_api_key_masked ?? "hidden"}) - leave empty to keep` : "Not configured"}
               value={form.tautulliApiKey}
               onChange={(event) => setForm({ ...form, tautulliApiKey: event.target.value })}
             />
@@ -267,12 +267,7 @@ export function SettingsPage() {
 
           <div>
             <label className={labelClass} htmlFor="sftpgo-url">SFTPGo URL</label>
-            <input
-              id="sftpgo-url"
-              className={inputClass}
-              value={form.sftpgoUrl}
-              onChange={(event) => setForm({ ...form, sftpgoUrl: event.target.value })}
-            />
+            <input id="sftpgo-url" className={inputClass} value={form.sftpgoUrl} onChange={(event) => setForm({ ...form, sftpgoUrl: event.target.value })} />
           </div>
 
           <div>
@@ -281,11 +276,7 @@ export function SettingsPage() {
               id="sftpgo-token"
               type="password"
               className={inputClass}
-              placeholder={
-                settings.sftpgo_token_set
-                  ? `Configured (${settings.sftpgo_token_masked ?? "hidden"}) - leave empty to keep`
-                  : "Not configured"
-              }
+              placeholder={settings.sftpgo_token_set ? `Configured (${settings.sftpgo_token_masked ?? "hidden"}) - leave empty to keep` : "Not configured"}
               value={form.sftpgoToken}
               onChange={(event) => setForm({ ...form, sftpgoToken: event.target.value })}
             />
@@ -293,124 +284,82 @@ export function SettingsPage() {
 
           <div className="md:col-span-2">
             <label className={labelClass} htmlFor="sftpgo-logs-path">SFTPGo Logs Path</label>
-            <input
-              id="sftpgo-logs-path"
-              className={inputClass}
-              value={form.sftpgoLogsPath}
-              onChange={(event) => setForm({ ...form, sftpgoLogsPath: event.target.value })}
-              placeholder="/srv/sftpgo/logs/transfers.json"
-            />
+            <input id="sftpgo-logs-path" className={inputClass} value={form.sftpgoLogsPath} onChange={(event) => setForm({ ...form, sftpgoLogsPath: event.target.value })} placeholder="/srv/sftpgo/logs/transfers.json" />
           </div>
 
           <div className="md:col-span-2">
             <label className={labelClass} htmlFor="sftpgo-path-mappings">SFTPGo Path Mappings (one per line)</label>
-            <textarea
-              id="sftpgo-path-mappings"
-              rows={4}
-              className={inputClass}
-              value={form.sftpgoPathMappings}
-              onChange={(event) => setForm({ ...form, sftpgoPathMappings: event.target.value })}
-              placeholder="/multimedia/peliculas:/peliculas&#10;/multimedia/series:/series"
-            />
-            <p className="mt-1 text-xs text-fg-muted">Format: source:target, source=target or source-&gt;target.</p>
+            <textarea id="sftpgo-path-mappings" rows={4} className={inputClass} value={form.sftpgoPathMappings} onChange={(event) => setForm({ ...form, sftpgoPathMappings: event.target.value })} placeholder="/multimedia/peliculas:/peliculas&#10;/multimedia/series:/series" />
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-card p-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <h3 className="font-display text-xl text-white">Samba</h3>
+            <p className="text-sm text-fg-muted">Import active SMB downloads from smbstatus JSON snapshots.</p>
+          </div>
+
+          <div className="md:col-span-2 flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <input id="samba-enabled" type="checkbox" checked={form.sambaEnabled} onChange={(event) => setForm({ ...form, sambaEnabled: event.target.checked })} />
+            <label htmlFor="samba-enabled" className="text-sm text-fg">Enable Samba ingestion</label>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelClass} htmlFor="samba-status-json">Samba Status JSON Path</label>
+            <input id="samba-status-json" className={inputClass} value={form.sambaStatusJsonPath} onChange={(event) => setForm({ ...form, sambaStatusJsonPath: event.target.value })} placeholder="/data/samba-status-sample.json" />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelClass} htmlFor="samba-path-mappings">Samba Path Mappings (one per line)</label>
+            <textarea id="samba-path-mappings" rows={4} className={inputClass} value={form.sambaPathMappings} onChange={(event) => setForm({ ...form, sambaPathMappings: event.target.value })} placeholder="/multimedia/peliculas:/peliculas&#10;/multimedia/series:/series" />
           </div>
         </section>
 
         <section className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-card p-5 md:grid-cols-2">
           <div className="md:col-span-2">
             <h3 className="font-display text-xl text-white">Behavior</h3>
-            <p className="text-sm text-fg-muted">Polling frequency, timezone, poster strategy and retention.</p>
           </div>
 
           <div>
             <label className={labelClass} htmlFor="polling-frequency">Polling Frequency (seconds)</label>
-            <input
-              id="polling-frequency"
-              type="number"
-              min={5}
-              className={inputClass}
-              value={form.pollingFrequencySeconds}
-              onChange={(event) => setForm({ ...form, pollingFrequencySeconds: event.target.value })}
-            />
+            <input id="polling-frequency" type="number" min={5} className={inputClass} value={form.pollingFrequencySeconds} onChange={(event) => setForm({ ...form, pollingFrequencySeconds: event.target.value })} />
           </div>
 
           <div>
             <label className={labelClass} htmlFor="timezone">Timezone</label>
-            <input
-              id="timezone"
-              className={inputClass}
-              value={form.timezone}
-              onChange={(event) => setForm({ ...form, timezone: event.target.value })}
-              placeholder="Europe/Madrid"
-            />
+            <input id="timezone" className={inputClass} value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} placeholder="Europe/Madrid" />
           </div>
 
           <div>
             <label className={labelClass} htmlFor="placeholder-path">Placeholder Path</label>
-            <input
-              id="placeholder-path"
-              className={inputClass}
-              value={form.placeholderPath}
-              onChange={(event) => setForm({ ...form, placeholderPath: event.target.value })}
-            />
+            <input id="placeholder-path" className={inputClass} value={form.placeholderPath} onChange={(event) => setForm({ ...form, placeholderPath: event.target.value })} />
           </div>
 
           <div>
             <label className={labelClass} htmlFor="history-retention">History Retention (days)</label>
-            <input
-              id="history-retention"
-              type="number"
-              min={1}
-              className={inputClass}
-              value={form.historyRetentionDays}
-              onChange={(event) => setForm({ ...form, historyRetentionDays: event.target.value })}
-            />
+            <input id="history-retention" type="number" min={1} className={inputClass} value={form.historyRetentionDays} onChange={(event) => setForm({ ...form, historyRetentionDays: event.target.value })} />
           </div>
 
           <div>
             <label className={labelClass} htmlFor="media-roots">Media Root Paths</label>
-            <textarea
-              id="media-roots"
-              rows={5}
-              className={inputClass}
-              value={form.mediaRootPaths}
-              onChange={(event) => setForm({ ...form, mediaRootPaths: event.target.value })}
-              placeholder="/media/movies&#10;/media/series"
-            />
+            <textarea id="media-roots" rows={5} className={inputClass} value={form.mediaRootPaths} onChange={(event) => setForm({ ...form, mediaRootPaths: event.target.value })} placeholder="/media/movies&#10;/media/series" />
           </div>
 
           <div>
             <label className={labelClass} htmlFor="poster-names">Preferred Poster Names</label>
-            <textarea
-              id="poster-names"
-              rows={5}
-              className={inputClass}
-              value={form.preferredPosterNames}
-              onChange={(event) => setForm({ ...form, preferredPosterNames: event.target.value })}
-              placeholder="poster.jpg&#10;cover.jpg&#10;folder.jpg"
-            />
+            <textarea id="poster-names" rows={5} className={inputClass} value={form.preferredPosterNames} onChange={(event) => setForm({ ...form, preferredPosterNames: event.target.value })} placeholder="poster.jpg&#10;cover.jpg&#10;folder.jpg" />
           </div>
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-card p-5">
           <h3 className="font-display text-xl text-white">User Aliases</h3>
           <p className="mb-3 text-sm text-fg-muted">Use one alias per line: <code className="text-fg">real_user=Display Name</code>.</p>
-          <textarea
-            rows={8}
-            className={inputClass}
-            value={form.userAliases}
-            onChange={(event) => setForm({ ...form, userAliases: event.target.value })}
-            placeholder="sil.g8=Sil\nalex_aalex93=Alex"
-          />
+          <textarea rows={8} className={inputClass} value={form.userAliases} onChange={(event) => setForm({ ...form, userAliases: event.target.value })} placeholder="sil.g8=Sil\nalex_aalex93=Alex" />
         </section>
 
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving..." : "Save Settings"}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => setForm(mapSettingsToForm(settings))}>
-            Reset Changes
-          </Button>
+          <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>
+          <Button type="button" variant="outline" onClick={() => setForm(mapSettingsToForm(settings))}>Reset Changes</Button>
         </div>
       </form>
     </div>

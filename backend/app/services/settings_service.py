@@ -17,6 +17,9 @@ class SettingsService:
     KEY_SFTPGO_TOKEN = "sftpgo_token"
     KEY_SFTPGO_LOGS_PATH = "sftpgo_logs_path"
     KEY_SFTPGO_PATH_MAPPINGS = "sftpgo_path_mappings"
+    KEY_SAMBA_ENABLED = "samba_enabled"
+    KEY_SAMBA_STATUS_JSON_PATH = "samba_status_json_path"
+    KEY_SAMBA_PATH_MAPPINGS = "samba_path_mappings"
     KEY_POLLING_FREQUENCY_SECONDS = "polling_frequency_seconds"
     KEY_TIMEZONE = "timezone"
     KEY_MEDIA_ROOT_PATHS = "media_root_paths"
@@ -32,6 +35,9 @@ class SettingsService:
         KEY_SFTPGO_TOKEN: "SFTPGo token/API key (secret)",
         KEY_SFTPGO_LOGS_PATH: "SFTPGo transfer logs JSON path",
         KEY_SFTPGO_PATH_MAPPINGS: "SFTPGo path mappings as JSON list",
+        KEY_SAMBA_ENABLED: "Samba ingestion enabled",
+        KEY_SAMBA_STATUS_JSON_PATH: "Samba smbstatus JSON path",
+        KEY_SAMBA_PATH_MAPPINGS: "Samba path mappings as JSON list",
         KEY_POLLING_FREQUENCY_SECONDS: "Polling frequency in seconds",
         KEY_TIMEZONE: "Display timezone",
         KEY_MEDIA_ROOT_PATHS: "Media root paths as JSON list",
@@ -84,6 +90,22 @@ class SettingsService:
                     self._serialize_list(self._parse_csv(self.app_settings.sftpgo_path_mappings)),
                 )
             ),
+            samba_enabled=self._parse_bool(
+                self._value_or_default(by_key, self.KEY_SAMBA_ENABLED, str(self.app_settings.samba_enabled).lower())
+            ),
+            samba_status_json_path=self._value_or_default(
+                by_key,
+                self.KEY_SAMBA_STATUS_JSON_PATH,
+                self.app_settings.samba_status_json_path,
+            )
+            or None,
+            samba_path_mappings=self._parse_list(
+                self._value_or_default(
+                    by_key,
+                    self.KEY_SAMBA_PATH_MAPPINGS,
+                    self._serialize_list(self._parse_csv(self.app_settings.samba_path_mappings)),
+                )
+            ),
             polling_frequency_seconds=int(
                 self._value_or_default(
                     by_key,
@@ -132,6 +154,13 @@ class SettingsService:
             self._set(self.KEY_SFTPGO_LOGS_PATH, payload.sftpgo_logs_path)
         if payload.sftpgo_path_mappings is not None:
             self._set(self.KEY_SFTPGO_PATH_MAPPINGS, self._serialize_list(payload.sftpgo_path_mappings))
+
+        if payload.samba_enabled is not None:
+            self._set(self.KEY_SAMBA_ENABLED, str(payload.samba_enabled).lower())
+        if payload.samba_status_json_path is not None:
+            self._set(self.KEY_SAMBA_STATUS_JSON_PATH, payload.samba_status_json_path)
+        if payload.samba_path_mappings is not None:
+            self._set(self.KEY_SAMBA_PATH_MAPPINGS, self._serialize_list(payload.samba_path_mappings))
 
         if payload.polling_frequency_seconds is not None:
             self._set(self.KEY_POLLING_FREQUENCY_SECONDS, str(payload.polling_frequency_seconds))
@@ -199,6 +228,10 @@ class SettingsService:
         if not raw:
             return []
         return [item.strip() for item in raw.split(",") if item.strip()]
+
+    @staticmethod
+    def _parse_bool(raw: str) -> bool:
+        return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
     def _value_or_default(by_key: dict[str, AppSettingModel], key: str, default: str) -> str:

@@ -1,4 +1,4 @@
-﻿import { StreamSource } from "@/types/domain";
+import { StreamSource } from "@/types/domain";
 
 import { cn } from "@/shared/lib/cn";
 
@@ -9,6 +9,7 @@ type SourceBadgeProps = {
 const sourceStyles: Record<StreamSource, string> = {
   tautulli: "border-cyan-300/40 bg-cyan-400/10 text-cyan-200",
   sftpgo: "border-emerald-300/40 bg-emerald-400/10 text-emerald-200",
+  samba: "border-amber-300/40 bg-amber-400/10 text-amber-200",
 };
 
 export function SourceBadge({ source }: SourceBadgeProps) {

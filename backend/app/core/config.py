@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     sftpgo_stale_seconds: int = 180
     sftpgo_log_limit: int = 200
 
+    samba_enabled: bool = False
+    samba_status_json_path: str = ""
+    samba_path_mappings: str = ""
+    samba_stale_seconds: int = 180
+
     background_sync_enabled: bool = True
     background_sync_interval_seconds: int = 30
 

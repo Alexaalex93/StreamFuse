@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -13,4 +13,5 @@ class SourceHealthItem(BaseModel):
 class SourceHealthResponse(BaseModel):
     tautulli: SourceHealthItem
     sftpgo: SourceHealthItem
+    samba: SourceHealthItem
     updated_at: datetime

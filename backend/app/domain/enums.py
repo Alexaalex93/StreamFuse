@@ -1,9 +1,10 @@
-﻿from enum import Enum
+from enum import Enum
 
 
 class StreamSource(str, Enum):
     TAUTULLI = "tautulli"
     SFTPGO = "sftpgo"
+    SAMBA = "samba"
 
 
 class SessionStatus(str, Enum):

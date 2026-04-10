@@ -12,7 +12,7 @@ type AppShellProps = {
   children: ReactNode;
 };
 
-type SourceKey = "tautulli" | "sftpgo";
+type SourceKey = "tautulli" | "sftpgo" | "samba";
 
 type SourceHealthItem = {
   configured: boolean;
@@ -24,6 +24,7 @@ type SourceHealthItem = {
 type SourceHealthResponse = {
   tautulli: SourceHealthItem;
   sftpgo: SourceHealthItem;
+  samba: SourceHealthItem;
   updated_at: string;
 };
 
@@ -75,6 +76,7 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
     () => [
       { key: "tautulli" as SourceKey, label: "Tautulli", item: health?.tautulli ?? null },
       { key: "sftpgo" as SourceKey, label: "SFTPGo", item: health?.sftpgo ?? null },
+      { key: "samba" as SourceKey, label: "Samba", item: health?.samba ?? null },
     ],
     [health],
   );
@@ -88,7 +90,7 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
   };
 
   return (
-    <div className="min-h-screen bg-app-gradient text-fg">
+    <div className="min-h-screen overflow-x-hidden bg-app-gradient text-fg">
       <div className="mx-auto grid min-h-screen max-w-[1440px] grid-cols-1 lg:grid-cols-[280px_1fr]">
         <aside className="border-r border-white/10 bg-sidebar px-4 py-6 backdrop-blur-xl">
           <div className="mb-8 flex items-center gap-3 px-2">
@@ -145,7 +147,7 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
           </div>
         </aside>
 
-        <div className="flex min-h-screen flex-col overflow-y-scroll">
+        <div className="flex min-h-screen flex-col">
           <header className="sticky top-0 z-20 h-[76px] border-b border-white/10 bg-topbar/70 px-4 backdrop-blur-xl md:px-8">
             <div className="flex h-full items-center justify-between gap-4">
               <div>
@@ -159,9 +161,10 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 md:px-8"><div className="min-h-[calc(100vh-180px)]">{children}</div></main>
+          <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
         </div>
       </div>
     </div>
   );
 }
+
