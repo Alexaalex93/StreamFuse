@@ -2,12 +2,13 @@
 <PLUGIN
   name="streamfuse-widget"
   author="alexaalex93"
-  version="0.2.0"
+  version="0.2.1"
   pluginURL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/plg/streamfuse-widget.plg"
   icon="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/assets/streamfuse-icon.png">
 
   <CHANGES>
 ###2026.04.11
+- Fixed XML parsing for Unraid installer (CDATA in INLINE blocks)
 - Added native Dynamix dashboard widget integration
 - Added plugin settings page for backend URL and refresh options
 - Added server-side proxy endpoint to avoid CORS issues
@@ -18,7 +19,7 @@
     URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/release/streamfuse-widget-unraid.tar.gz" />
 
   <FILE Run="/bin/bash">
-    <INLINE>
+    <INLINE><![CDATA[
 mkdir -p /boot/config/plugins/streamfuse-widget
 mkdir -p /usr/local/emhttp/plugins
 tar -xzf /boot/config/plugins/streamfuse-widget/streamfuse-widget-unraid.tar.gz -C /
@@ -31,13 +32,13 @@ refresh_seconds="10"
 session_limit="5"
 EOF
 fi
-    </INLINE>
+]]></INLINE>
   </FILE>
 
   <FILE Run="/bin/bash" Method="remove">
-    <INLINE>
+    <INLINE><![CDATA[
 rm -rf /usr/local/emhttp/plugins/streamfuse-widget
 rm -rf /boot/config/plugins/streamfuse-widget
-    </INLINE>
+]]></INLINE>
   </FILE>
 </PLUGIN>
