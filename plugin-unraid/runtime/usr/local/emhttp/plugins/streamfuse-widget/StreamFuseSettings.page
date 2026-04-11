@@ -1,32 +1,24 @@
 Menu="Settings"
 Title="StreamFuse Widget"
 Icon="streamfuse-icon.png"
-Version="0.2.0"
+Version="0.2.3"
 ---
-<?php
-$plugin = 'streamfuse-widget';
-$cfg = parse_plugin_cfg($plugin, true);
-$backend = $cfg['backend_url'] ?? 'http://127.0.0.1:8000';
-$app = $cfg['app_url'] ?? 'http://127.0.0.1:5173';
-$refresh = (int)($cfg['refresh_seconds'] ?? 10);
-$limit = (int)($cfg['session_limit'] ?? 5);
-?>
 <link rel="stylesheet" href="/plugins/streamfuse-widget/widget/widget.css">
 <div class="streamfuse-settings" style="max-width:760px;padding:16px;background:#1a2130;border:1px solid #2a3447;border-radius:8px;">
   <h2 style="margin-top:0;">StreamFuse Widget Settings</h2>
   <p>Configure backend endpoint and widget behavior for the Unraid dashboard tile.</p>
 
   <label style="display:block;margin-bottom:6px;">Backend URL (without /api)</label>
-  <input id="sf-backend-url" type="text" value="<?=htmlspecialchars($backend)?>" style="width:100%;margin-bottom:12px;" />
+  <input id="sf-backend-url" type="text" value="http://127.0.0.1:8000" style="width:100%;margin-bottom:12px;" />
 
   <label style="display:block;margin-bottom:6px;">StreamFuse App URL</label>
-  <input id="sf-app-url" type="text" value="<?=htmlspecialchars($app)?>" style="width:100%;margin-bottom:12px;" />
+  <input id="sf-app-url" type="text" value="http://127.0.0.1:5173" style="width:100%;margin-bottom:12px;" />
 
   <label style="display:block;margin-bottom:6px;">Refresh (seconds)</label>
-  <input id="sf-refresh" type="number" min="3" max="120" value="<?=htmlspecialchars((string)$refresh)?>" style="width:180px;margin-bottom:12px;" />
+  <input id="sf-refresh" type="number" min="3" max="120" value="10" style="width:180px;margin-bottom:12px;" />
 
   <label style="display:block;margin-bottom:6px;">Max sessions shown</label>
-  <input id="sf-limit" type="number" min="1" max="20" value="<?=htmlspecialchars((string)$limit)?>" style="width:180px;margin-bottom:16px;" />
+  <input id="sf-limit" type="number" min="1" max="20" value="5" style="width:180px;margin-bottom:16px;" />
 
   <div style="display:flex;gap:10px;align-items:center;">
     <button id="sf-save" class="btn">Save</button>
@@ -38,6 +30,20 @@ $limit = (int)($cfg['session_limit'] ?? 5);
 (() => {
   const saveBtn = document.getElementById('sf-save');
   const status = document.getElementById('sf-status');
+
+  async function loadConfig() {
+    try {
+      const resp = await fetch('/plugins/streamfuse-widget/api/config.php', { credentials: 'same-origin' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data || typeof data !== 'object') return;
+
+      document.getElementById('sf-backend-url').value = data.backend_url || 'http://127.0.0.1:8000';
+      document.getElementById('sf-app-url').value = data.app_url || 'http://127.0.0.1:5173';
+      document.getElementById('sf-refresh').value = String(data.refresh_seconds || 10);
+      document.getElementById('sf-limit').value = String(data.session_limit || 5);
+    } catch (_) {}
+  }
 
   async function saveConfig() {
     status.textContent = 'Saving...';
@@ -67,5 +73,7 @@ $limit = (int)($cfg['session_limit'] ?? 5);
     e.preventDefault();
     saveConfig().catch(() => { status.textContent = 'Save failed'; });
   });
+
+  loadConfig();
 })();
 </script>

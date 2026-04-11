@@ -1,14 +1,15 @@
 <?xml version="1.0"?>
 <PLUGIN name="streamfuse-widget"
         author="alexaalex93"
-        version="0.2.2"
+        version="0.2.3"
         pluginURL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/plg/streamfuse-widget.plg"
         icon="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/assets/streamfuse-icon.png">
 
   <CHANGES>
 ###2026.04.11
-- Switched installer to direct file deployment (no tar extraction)
-- Fixes missing Settings/Dashboard page registration on some Unraid installs
+- Fixed black Settings page on some Unraid installs
+- Removed dependency on parse_plugin_cfg in page runtime
+- Direct file deployment installer
   </CHANGES>
 
   <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/StreamFuseSettings.page" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/StreamFuseSettings.page" />
