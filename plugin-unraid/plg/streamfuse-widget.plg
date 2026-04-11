@@ -1,29 +1,32 @@
 <?xml version="1.0"?>
-<PLUGIN
-  name="streamfuse-widget"
-  author="alexaalex93"
-  version="0.2.1"
-  pluginURL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/plg/streamfuse-widget.plg"
-  icon="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/assets/streamfuse-icon.png">
+<PLUGIN name="streamfuse-widget"
+        author="alexaalex93"
+        version="0.2.2"
+        pluginURL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/plg/streamfuse-widget.plg"
+        icon="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/assets/streamfuse-icon.png">
 
   <CHANGES>
 ###2026.04.11
-- Fixed XML parsing for Unraid installer (CDATA in INLINE blocks)
-- Added native Dynamix dashboard widget integration
-- Added plugin settings page for backend URL and refresh options
-- Added server-side proxy endpoint to avoid CORS issues
+- Switched installer to direct file deployment (no tar extraction)
+- Fixes missing Settings/Dashboard page registration on some Unraid installs
   </CHANGES>
 
-  <FILE
-    Name="/boot/config/plugins/streamfuse-widget/streamfuse-widget-unraid.tar.gz"
-    URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/release/streamfuse-widget-unraid.tar.gz" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/StreamFuseSettings.page" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/StreamFuseSettings.page" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/StreamFuseDash.page" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/StreamFuseDash.page" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/dashboard.js" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/dashboard.js" />
 
-  <FILE Run="/bin/bash">
-    <INLINE><![CDATA[
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/config.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/config.php" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/save.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/save.php" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/widget_data.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/widget_data.php" />
+
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.css" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.css" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.js" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.js" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/widget/index.html" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/widget/index.html" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/widget/assets/poster-placeholder.svg" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/widget/assets/poster-placeholder.svg" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/images/streamfuse-icon.png" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/images/streamfuse-icon.png" />
+
+  <FILE Run="/bin/bash"><![CDATA[
 mkdir -p /boot/config/plugins/streamfuse-widget
-mkdir -p /usr/local/emhttp/plugins
-tar -xzf /boot/config/plugins/streamfuse-widget/streamfuse-widget-unraid.tar.gz -C /
-chmod -R 755 /usr/local/emhttp/plugins/streamfuse-widget
 if [ ! -f /boot/config/plugins/streamfuse-widget/streamfuse-widget.cfg ]; then
 cat >/boot/config/plugins/streamfuse-widget/streamfuse-widget.cfg <<'EOF'
 backend_url="http://127.0.0.1:8000"
@@ -32,13 +35,10 @@ refresh_seconds="10"
 session_limit="5"
 EOF
 fi
-]]></INLINE>
-  </FILE>
+]]></FILE>
 
-  <FILE Run="/bin/bash" Method="remove">
-    <INLINE><![CDATA[
+  <FILE Run="/bin/bash" Method="remove"><![CDATA[
 rm -rf /usr/local/emhttp/plugins/streamfuse-widget
 rm -rf /boot/config/plugins/streamfuse-widget
-]]></INLINE>
-  </FILE>
+]]></FILE>
 </PLUGIN>
