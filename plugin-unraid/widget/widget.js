@@ -30,6 +30,7 @@ const retryBtn = document.getElementById("btn-retry");
 const kpiActive = document.getElementById("kpi-active");
 const kpiTautulli = document.getElementById("kpi-tautulli");
 const kpiSftpgo = document.getElementById("kpi-sftpgo");
+const kpiSamba = document.getElementById("kpi-samba");
 const kpiBandwidth = document.getElementById("kpi-bandwidth");
 
 openApp.href = config.streamfuseAppUrl;
@@ -63,6 +64,7 @@ function renderKpis(summary) {
   kpiActive.textContent = String(summary.active_sessions ?? 0);
   kpiTautulli.textContent = String(summary.tautulli_sessions ?? 0);
   kpiSftpgo.textContent = String(summary.sftpgo_sessions ?? 0);
+  if (kpiSamba) kpiSamba.textContent = String(summary.samba_sessions ?? 0);
   kpiBandwidth.textContent = summary.total_bandwidth_human || "0 Mbps";
 }
 
