@@ -46,13 +46,16 @@ class SambaSyncService:
         poster_resolver: PosterResolver,
         stale_seconds: int = 180,
         path_mappings: list[str] | None = None,
+        min_consecutive_polls_for_active: int = 1,
     ) -> None:
         self.client = client
         self.session_service = session_service
         self.poster_resolver = poster_resolver
         self.stale_seconds = stale_seconds
         self.path_mappings = self._parse_path_mappings(path_mappings or [])
+        self.min_consecutive_polls_for_active = max(1, int(min_consecutive_polls_for_active))
         self._active_session_ids_by_key: dict[str, str] = {}
+        self._seen_poll_counts: dict[str, int] = {}
         self._key_by_session_id: dict[str, str] = {}
 
     async def poll_once(self) -> dict[str, int]:
@@ -68,15 +71,32 @@ class SambaSyncService:
         imported = 0
         errors = 0
 
+        current_keys = {
+            str(item.get("logical_key") or "")
+            for item in grouped
+            if str(item.get("logical_key") or "")
+        }
+        next_counts: dict[str, int] = {}
+        for key in current_keys:
+            next_counts[key] = self._seen_poll_counts.get(key, 0) + 1
+        self._seen_poll_counts = next_counts
+
         for item in grouped:
             try:
+                logical_key = str(item.get("logical_key") or "")
+                if not logical_key:
+                    continue
+                seen_count = self._seen_poll_counts.get(logical_key, 0)
+                if seen_count < self.min_consecutive_polls_for_active:
+                    continue
+
                 media_path = self._normalize_media_path_for_local_fs(item["file_path"])
                 if not media_path or not self._looks_like_media_file(media_path):
                     continue
 
                 user_name = str(item["connection"].get("username") or "unknown")
                 ip_value = _normalize_ip(str(item["connection"].get("remote_address") or ""))
-                logical_key = self._group_key(user_name, ip_value, media_path)
+                logical_key = logical_key or self._group_key(user_name, ip_value, media_path)
                 source_session_id = self._resolve_session_id_for_key(logical_key)
                 seen_ids.add(source_session_id)
 
@@ -114,13 +134,11 @@ class SambaSyncService:
                 connection_time = _to_datetime(item["connection"].get("connection_time"))
                 started_at = start_time or connection_time or datetime.now(UTC)
 
-                estimated_bps = None
-                if size and start_time:
-                    elapsed = max((datetime.now(UTC) - start_time).total_seconds(), 1)
-                    estimated_bps = int(size / elapsed)
-
-                bitrate_bps = media_info.overall_bitrate_bps if media_info else None
-                bandwidth_bps = bitrate_bps or estimated_bps
+                bandwidth_bps = (
+                    (media_info.overall_bitrate_bps or media_info.video_bitrate_bps)
+                    if media_info is not None
+                    else None
+                )
 
                 payload = UnifiedStreamSessionCreate(
                     source=StreamSource.SAMBA,
@@ -470,5 +488,8 @@ def _format_bps(bps: int | None) -> str | None:
     if mbps >= 1:
         return f"{mbps:.1f} Mbps"
     return f"{(bps / 1000):.1f} Kbps"
+
+
+
 
 
