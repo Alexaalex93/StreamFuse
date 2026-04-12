@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from app.domain.enums import SessionStatus, StreamSource
 from app.parsers.media_parser import clean_movie_title, detect_media_type, parse_series_context
 from app.parsers.mediainfo_parser import parse_mediainfo_for_media
 from app.persistence.models.unified_stream_session import UnifiedStreamSessionModel
+from app.persistence.repositories.app_setting_repository import AppSettingRepository
 from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
 
@@ -39,6 +41,8 @@ _MEDIA_FILE_EXTENSIONS = {
 
 
 class SambaSyncService:
+    KEY_SAMBA_POLL_COUNTS = "samba_poll_counts"
+
     def __init__(
         self,
         client: SambaClient,
@@ -46,7 +50,9 @@ class SambaSyncService:
         poster_resolver: PosterResolver,
         stale_seconds: int = 180,
         path_mappings: list[str] | None = None,
-        min_consecutive_polls_for_active: int = 1,
+        min_consecutive_polls_for_active: int = 3,
+        min_open_seconds_for_active: int = 20,
+        app_setting_repository: AppSettingRepository | None = None,
     ) -> None:
         self.client = client
         self.session_service = session_service
@@ -54,8 +60,10 @@ class SambaSyncService:
         self.stale_seconds = stale_seconds
         self.path_mappings = self._parse_path_mappings(path_mappings or [])
         self.min_consecutive_polls_for_active = max(1, int(min_consecutive_polls_for_active))
+        self.min_open_seconds_for_active = max(0, int(min_open_seconds_for_active))
+        self.app_setting_repository = app_setting_repository
         self._active_session_ids_by_key: dict[str, str] = {}
-        self._seen_poll_counts: dict[str, int] = {}
+        self._seen_poll_counts: dict[str, int] = self._load_seen_poll_counts()
         self._key_by_session_id: dict[str, str] = {}
 
     async def poll_once(self) -> dict[str, int]:
@@ -80,6 +88,7 @@ class SambaSyncService:
         for key in current_keys:
             next_counts[key] = self._seen_poll_counts.get(key, 0) + 1
         self._seen_poll_counts = next_counts
+        self._persist_seen_poll_counts()
 
         for item in grouped:
             try:
@@ -133,6 +142,9 @@ class SambaSyncService:
                 start_time = _to_datetime(transfer.get("start_time"))
                 connection_time = _to_datetime(item["connection"].get("connection_time"))
                 started_at = start_time or connection_time or datetime.now(UTC)
+                open_age_seconds = max(0.0, (datetime.now(UTC) - started_at).total_seconds())
+                if open_age_seconds < self.min_open_seconds_for_active:
+                    continue
 
                 bandwidth_bps = (
                     (media_info.overall_bitrate_bps or media_info.video_bitrate_bps)
@@ -230,7 +242,36 @@ class SambaSyncService:
                         "file_path": file_path,
                     }
 
-        return list(grouped.values())
+        # Samba directory scanners can momentarily open many media files.
+        # Keep one strongest candidate per user+ip per poll to avoid floods.
+        by_viewer: dict[str, dict[str, Any]] = {}
+        for candidate in grouped.values():
+            conn = candidate.get("connection") if isinstance(candidate.get("connection"), dict) else {}
+            transfer = candidate.get("transfer") if isinstance(candidate.get("transfer"), dict) else {}
+            username = str(conn.get("username") or "").strip().lower()
+            ip_value = _normalize_ip(str(conn.get("remote_address") or ""))
+            viewer_key = f"{username}|{ip_value}"
+
+            current = by_viewer.get(viewer_key)
+            if current is None:
+                by_viewer[viewer_key] = candidate
+                continue
+
+            current_transfer = current.get("transfer") if isinstance(current.get("transfer"), dict) else {}
+            current_size = _to_int(current_transfer.get("size")) or 0
+            candidate_size = _to_int(transfer.get("size")) or 0
+            if candidate_size > current_size:
+                by_viewer[viewer_key] = candidate
+                continue
+            if candidate_size < current_size:
+                continue
+
+            current_started = _to_datetime(current_transfer.get("start_time"))
+            candidate_started = _to_datetime(transfer.get("start_time"))
+            if candidate_started and (current_started is None or candidate_started < current_started):
+                by_viewer[viewer_key] = candidate
+
+        return list(by_viewer.values())
 
     def _collapse_duplicate_active_sessions(self) -> int:
         rows = self.session_service.repository.list_active_by_source(StreamSource.SAMBA)
@@ -389,6 +430,40 @@ class SambaSyncService:
         return parsed
 
 
+    def _load_seen_poll_counts(self) -> dict[str, int]:
+        if self.app_setting_repository is None:
+            return {}
+        row = self.app_setting_repository.get(self.KEY_SAMBA_POLL_COUNTS)
+        if row is None or not row.value:
+            return {}
+        try:
+            parsed = json.loads(row.value)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        result: dict[str, int] = {}
+        for key, value in parsed.items():
+            normalized_key = str(key).strip()
+            if not normalized_key:
+                continue
+            try:
+                numeric = int(value)
+            except (TypeError, ValueError):
+                continue
+            if numeric > 0:
+                result[normalized_key] = numeric
+        return result
+
+    def _persist_seen_poll_counts(self) -> None:
+        if self.app_setting_repository is None:
+            return
+        payload = json.dumps(self._seen_poll_counts, ensure_ascii=False, separators=(",", ":"))
+        self.app_setting_repository.set(
+            self.KEY_SAMBA_POLL_COUNTS,
+            payload,
+            "Internal Samba logical-key poll counters",
+        )
 def _clean_display_text(value: str | None) -> str:
     if not value:
         return ""

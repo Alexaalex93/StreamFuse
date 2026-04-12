@@ -49,6 +49,7 @@ async def run_once() -> dict[str, int]:
             poster_resolver=PosterResolver(settings),
             stale_seconds=settings.samba_stale_seconds,
             path_mappings=path_mappings,
+            app_setting_repository=repo,
         )
         return await sync_service.poll_once()
     finally:
