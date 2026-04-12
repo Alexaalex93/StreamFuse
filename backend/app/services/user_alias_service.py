@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 
@@ -22,6 +22,23 @@ class UserAliasService:
             return "unknown"
         return self._aliases.get(raw) or self._aliases_lower.get(raw.lower()) or raw
 
+
+    def candidate_raw_usernames(self, user_name: str | None) -> set[str]:
+        raw = (user_name or "").strip()
+        if not raw:
+            return set()
+
+        target = raw.lower()
+        matches: set[str] = set()
+
+        for source, alias in self._aliases.items():
+            if source.lower() == target or alias.lower() == target:
+                matches.add(source)
+
+        if not matches:
+            matches.add(raw)
+
+        return matches
     def _load_aliases(self) -> dict[str, str]:
         row = self.db.scalar(select(AppSettingModel).where(AppSettingModel.key == self.KEY_USER_ALIASES))
         if row is None or not row.value:

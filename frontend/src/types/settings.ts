@@ -10,6 +10,13 @@ export type StreamFuseSettings = {
   samba_enabled: boolean;
   samba_status_json_path: string | null;
   samba_path_mappings: string[];
+  unraid_metrics_enabled: boolean;
+  unraid_metrics_json_path: string | null;
+  use_unraid_totals: boolean;
+  energy_tariff_punta_eur_kwh: number;
+  energy_tariff_llano_eur_kwh: number;
+  energy_tariff_valle_eur_kwh: number;
+  energy_tariff_weekend_eur_kwh: number;
   polling_frequency_seconds: number;
   timezone: string;
   media_root_paths: string[];
@@ -30,6 +37,13 @@ export type StreamFuseSettingsUpdate = {
   samba_enabled?: boolean;
   samba_status_json_path?: string | null;
   samba_path_mappings?: string[];
+  unraid_metrics_enabled?: boolean;
+  unraid_metrics_json_path?: string | null;
+  use_unraid_totals?: boolean;
+  energy_tariff_punta_eur_kwh?: number;
+  energy_tariff_llano_eur_kwh?: number;
+  energy_tariff_valle_eur_kwh?: number;
+  energy_tariff_weekend_eur_kwh?: number;
   polling_frequency_seconds?: number;
   timezone?: string;
   media_root_paths?: string[];

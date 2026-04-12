@@ -79,28 +79,29 @@ function cardSubtitle(session: UnifiedSession): string | null {
 
 function extractBitrate(session: UnifiedSession): string {
   const raw = session.raw_payload;
-  if (!raw || typeof raw !== "object") {
-    return session.bandwidth_human || "n/a";
-  }
-
-  const map = raw as Record<string, unknown>;
-  const mediaInfo = map.media_info as Record<string, unknown> | undefined;
+  const map = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined;
+  const mediaInfo = map?.media_info as Record<string, unknown> | undefined;
 
   const bpsFromMedia =
-    typeof mediaInfo?.video_bitrate_bps === "number"
-      ? mediaInfo.video_bitrate_bps
-      : typeof mediaInfo?.overall_bitrate_bps === "number"
-        ? mediaInfo.overall_bitrate_bps
+    typeof mediaInfo?.overall_bitrate_bps === "number"
+      ? mediaInfo.overall_bitrate_bps
+      : typeof mediaInfo?.video_bitrate_bps === "number"
+        ? mediaInfo.video_bitrate_bps
         : null;
 
   if (typeof bpsFromMedia === "number" && bpsFromMedia > 0) {
-    return `${Math.round(bpsFromMedia / 1_000_000)} Mbps`;
+    return `${(bpsFromMedia / 1_000_000).toFixed(1)} Mbps`;
+  }
+
+  // For SFTPGo/Samba we only trust mediainfo XML bitrate.
+  if (session.source === "sftpgo" || session.source === "samba") {
+    return "n/a";
   }
 
   const kbps =
-    typeof map.stream_bitrate === "number"
+    typeof map?.stream_bitrate === "number"
       ? map.stream_bitrate
-      : typeof map.bitrate === "number"
+      : typeof map?.bitrate === "number"
         ? map.bitrate
         : null;
 
@@ -110,6 +111,7 @@ function extractBitrate(session: UnifiedSession): string {
 
   return session.bandwidth_human || "n/a";
 }
+
 
 export function SessionCard({ session, onOpen }: SessionCardProps) {
   const backend = getBackendBase();
@@ -138,7 +140,7 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
           src={fanartSrc}
           alt=""
           aria-hidden
-          className="absolute inset-0 h-full w-full object-contain opacity-65 blur-[2px]"
+          className="absolute inset-0 h-full w-full object-cover object-top opacity-65 blur-[2px]"
         />
         <div className="absolute inset-0 bg-slate-950/30" aria-hidden />
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/92 via-slate-900/52 to-slate-900/68" aria-hidden />
@@ -197,5 +199,3 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
     </article>
   );
 }
-
-

@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -19,10 +19,11 @@ router = APIRouter(prefix="/stats")
 def get_stats_default(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
+    user_name: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> OverviewStatsResponse:
     service = StatsService(db)
-    data = service.get_overview(StatsFilters(date_from=date_from, date_to=date_to))
+    data = service.get_overview(StatsFilters(date_from=date_from, date_to=date_to, user_name=user_name))
     return OverviewStatsResponse(**data)
 
 
@@ -30,10 +31,11 @@ def get_stats_default(
 def get_overview_stats(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
+    user_name: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> OverviewStatsResponse:
     service = StatsService(db)
-    data = service.get_overview(StatsFilters(date_from=date_from, date_to=date_to))
+    data = service.get_overview(StatsFilters(date_from=date_from, date_to=date_to, user_name=user_name))
     return OverviewStatsResponse(**data)
 
 
@@ -42,10 +44,11 @@ def get_top_users(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=100),
+    user_name: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> TopUsersResponse:
     service = StatsService(db)
-    items = service.get_top_users(StatsFilters(date_from=date_from, date_to=date_to), limit=limit)
+    items = service.get_top_users(StatsFilters(date_from=date_from, date_to=date_to, user_name=user_name), limit=limit)
     return TopUsersResponse(items=items)
 
 
@@ -54,10 +57,11 @@ def get_top_media(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=100),
+    user_name: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> TopMediaResponse:
     service = StatsService(db)
-    data = service.get_top_media(StatsFilters(date_from=date_from, date_to=date_to), limit=limit)
+    data = service.get_top_media(StatsFilters(date_from=date_from, date_to=date_to, user_name=user_name), limit=limit)
     return TopMediaResponse(**data)
 
 
@@ -66,8 +70,12 @@ def get_user_insights(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=200),
+    user_name: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> UserInsightsResponse:
     service = StatsService(db)
-    data = service.get_user_insights(StatsFilters(date_from=date_from, date_to=date_to), limit=limit)
+    data = service.get_user_insights(StatsFilters(date_from=date_from, date_to=date_to, user_name=user_name), limit=limit)
     return UserInsightsResponse(**data)
+
+
+

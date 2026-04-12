@@ -19,6 +19,15 @@ class StreamFuseSettingsResponse(BaseModel):
     samba_status_json_path: str | None
     samba_path_mappings: list[str]
 
+    unraid_metrics_enabled: bool
+    unraid_metrics_json_path: str | None
+    use_unraid_totals: bool
+
+    energy_tariff_punta_eur_kwh: float
+    energy_tariff_llano_eur_kwh: float
+    energy_tariff_valle_eur_kwh: float
+    energy_tariff_weekend_eur_kwh: float
+
     polling_frequency_seconds: int
     timezone: str
     media_root_paths: list[str]
@@ -50,6 +59,15 @@ class StreamFuseSettingsUpdate(BaseModel):
     samba_enabled: bool | None = None
     samba_status_json_path: str | None = None
     samba_path_mappings: list[str] | None = None
+
+    unraid_metrics_enabled: bool | None = None
+    unraid_metrics_json_path: str | None = None
+    use_unraid_totals: bool | None = None
+
+    energy_tariff_punta_eur_kwh: float | None = None
+    energy_tariff_llano_eur_kwh: float | None = None
+    energy_tariff_valle_eur_kwh: float | None = None
+    energy_tariff_weekend_eur_kwh: float | None = None
 
     polling_frequency_seconds: int | None = None
     timezone: str | None = None
@@ -97,6 +115,20 @@ class StreamFuseSettingsUpdate(BaseModel):
             raise ValueError("history_retention_days must be >= 1")
         return value
 
+    @field_validator(
+        "energy_tariff_punta_eur_kwh",
+        "energy_tariff_llano_eur_kwh",
+        "energy_tariff_valle_eur_kwh",
+        "energy_tariff_weekend_eur_kwh",
+    )
+    @classmethod
+    def validate_tariffs(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if value < 0:
+            raise ValueError("Tariff values must be >= 0")
+        return value
+
     @field_validator("media_root_paths", "preferred_poster_names", "sftpgo_path_mappings", "samba_path_mappings")
     @classmethod
     def validate_list_items(cls, value: list[str] | None) -> list[str] | None:
@@ -118,4 +150,3 @@ class StreamFuseSettingsUpdate(BaseModel):
                 continue
             cleaned[source] = target
         return cleaned
-

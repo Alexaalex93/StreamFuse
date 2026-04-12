@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -18,6 +18,16 @@ class DailyBandwidthPoint(BaseModel):
     avg_bandwidth_bps: float
 
 
+class LabeledSessionsPoint(BaseModel):
+    label: str
+    sessions: int
+
+
+class HourSessionsPoint(BaseModel):
+    hour: int
+    sessions: int
+
+
 class OverviewStatsResponse(BaseModel):
     total_sessions: int
     active_sessions: int
@@ -26,13 +36,19 @@ class OverviewStatsResponse(BaseModel):
     total_shared_bytes: int
     total_shared_human: str
     sessions_by_day: list[DailySessionsPoint]
+    sessions_by_week: list[DailySessionsPoint]
     sessions_by_month: list[DailySessionsPoint]
     sessions_by_year: list[DailySessionsPoint]
     bandwidth_by_day: list[DailyBandwidthPoint]
+    bandwidth_by_week: list[DailyBandwidthPoint]
     bandwidth_by_month: list[DailyBandwidthPoint]
     bandwidth_by_year: list[DailyBandwidthPoint]
     source_distribution: list[SourceCount]
     active_by_source: list[SourceCount]
+    play_count_by_weekday: list[LabeledSessionsPoint]
+    play_count_by_hour: list[HourSessionsPoint]
+    play_count_by_platform: list[LabeledSessionsPoint]
+    play_count_by_media_type: list[LabeledSessionsPoint]
 
 
 class TopUserStat(BaseModel):
@@ -53,6 +69,7 @@ class TopMediaItem(BaseModel):
     sessions: int
     unique_users: int
     avg_bandwidth_bps: float | None
+    sample_session_id: int | None
 
 
 class TopMediaResponse(BaseModel):
@@ -97,3 +114,11 @@ class UserInsightsResponse(BaseModel):
     peak_hours: list[PeakHourPoint]
     timezone: str
     play_count_rule: str
+
+
+
+
+
+
+
+

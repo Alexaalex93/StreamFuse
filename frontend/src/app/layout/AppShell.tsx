@@ -7,6 +7,7 @@ import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 
 type AppShellProps = {
+  onLogout: () => void;
   currentSection: AppSection;
   onChangeSection: (section: AppSection) => void;
   children: ReactNode;
@@ -42,7 +43,7 @@ function statusLabel(item: SourceHealthItem | null): string {
   return item.connected ? "connected" : "disconnected";
 }
 
-export function AppShell({ currentSection, onChangeSection, children }: AppShellProps) {
+export function AppShell({ currentSection, onChangeSection, onLogout, children }: AppShellProps) {
   const [health, setHealth] = useState<SourceHealthResponse | null>(null);
 
   useEffect(() => {
@@ -154,9 +155,10 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
                 <h1 className="font-display text-xl font-semibold text-white">StreamFuse Console</h1>
                 <p className="text-xs text-fg-muted">Premium visibility for media sessions and transfer activity.</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button variant="ghost" onClick={onRefresh}>Refresh</Button>
                 <Button variant="default" onClick={onNewFilter}>New Filter</Button>
+                <Button variant="outline" onClick={onLogout}>Logout</Button>
               </div>
             </div>
           </header>
@@ -167,5 +169,8 @@ export function AppShell({ currentSection, onChangeSection, children }: AppShell
     </div>
   );
 }
+
+
+
 
 

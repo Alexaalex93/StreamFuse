@@ -98,12 +98,12 @@ class SFTPGoSyncService:
                 connection["file_path"] = media_path
                 connection["streamfuse_logical_key"] = key
 
-                bandwidth_bps = self._estimate_bandwidth_bps(
-                    source_session_id,
-                    connection,
-                    related_logs,
-                )
                 media_info = parse_mediainfo_for_media(media_path)
+                bandwidth_bps = (
+                    (media_info.overall_bitrate_bps or media_info.video_bitrate_bps)
+                    if media_info is not None
+                    else None
+                )
                 poster = self.poster_resolver.resolve(media_path, None)
 
                 payload = build_sftpgo_session_payload(
@@ -700,6 +700,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
 
 
 

@@ -46,14 +46,29 @@ def parse_mediainfo_for_media(media_file_path: str | None) -> MediaInfoSummary |
     if nfo_file is not None:
         nfo_summary = _parse_nfo_xml(nfo_file)
 
+    summary: MediaInfoSummary | None
     if xml_summary is None and nfo_summary is None:
-        return None
-    if xml_summary is None:
-        return nfo_summary
-    if nfo_summary is None:
-        return xml_summary
+        summary = None
+    elif xml_summary is None:
+        summary = nfo_summary
+    elif nfo_summary is None:
+        summary = xml_summary
+    else:
+        summary = _merge_summary(primary=xml_summary, fallback=nfo_summary)
 
-    return _merge_summary(primary=xml_summary, fallback=nfo_summary)
+    if summary is None:
+        return None
+
+    # For episodes, force series display name from root tvshow.nfo when available.
+    tvshow_nfo = _find_series_tvshow_nfo(media_file)
+    if tvshow_nfo is not None:
+        tvshow_summary = _parse_nfo_xml(tvshow_nfo)
+        if tvshow_summary:
+            series_title = _sanitize_title_text(tvshow_summary.series_title or tvshow_summary.title)
+            if series_title:
+                summary.series_title = series_title
+
+    return summary
 
 
 def _parse_mediainfo_xml(xml_file: Path) -> MediaInfoSummary | None:
@@ -76,8 +91,21 @@ def _parse_mediainfo_xml(xml_file: Path) -> MediaInfoSummary | None:
             _find_text(general_track, "Title"),
         ),
         duration_ms=_duration_to_ms(_find_text(general_track, "Duration")),
-        overall_bitrate_bps=_to_bitrate_bps(_first_non_empty(_find_text(general_track, "OverallBitRate"), _find_text(general_track, "OverallBitRate/String"), _find_text(general_track, "BitRate"))),
-        video_bitrate_bps=_to_bitrate_bps(_first_non_empty(_find_text(video_track, "BitRate"), _find_text(video_track, "BitRate_Nominal"), _find_text(video_track, "BitRate_Maximum"), _find_text(video_track, "BitRate/String"))),
+        overall_bitrate_bps=_to_bitrate_bps(
+            _first_non_empty(
+                _find_text(general_track, "OverallBitRate"),
+                _find_text(general_track, "OverallBitRate/String"),
+                _find_text(general_track, "BitRate"),
+            )
+        ),
+        video_bitrate_bps=_to_bitrate_bps(
+            _first_non_empty(
+                _find_text(video_track, "BitRate"),
+                _find_text(video_track, "BitRate_Nominal"),
+                _find_text(video_track, "BitRate_Maximum"),
+                _find_text(video_track, "BitRate/String"),
+            )
+        ),
         resolution=_format_resolution(width, height),
         video_codec=_first_non_empty(
             _find_text(video_track, "Format"),
@@ -102,6 +130,8 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
             return MediaInfoSummary(title=fallback_title)
         return None
 
+    root_tag = (root.tag or "").lower()
+
     video = root.find(".//fileinfo/streamdetails/video")
     if video is None:
         video = root.find(".//streamdetails/video")
@@ -125,8 +155,23 @@ def _parse_nfo_xml(nfo_file: Path) -> MediaInfoSummary | None:
         )
     )
 
+    title = _sanitize_title_text(_first_non_empty(_find_text(root, "title"), _find_text(root, "originaltitle")))
+    series_title = _sanitize_title_text(_first_non_empty(_find_text(root, "showtitle"), _find_text(root, "tvshowtitle")))
+    episode_title = None
+    season_number = _to_int(_find_text(root, "season"))
+    episode_number = _to_int(_find_text(root, "episode"))
+
+    if "episodedetails" in root_tag:
+        episode_title = title
+    elif "tvshow" in root_tag:
+        series_title = title or series_title
+
     return MediaInfoSummary(
-        title=_sanitize_title_text(_first_non_empty(_find_text(root, "title"), _find_text(root, "originaltitle"))),
+        title=title,
+        series_title=series_title,
+        episode_title=episode_title,
+        season_number=season_number,
+        episode_number=episode_number,
         duration_ms=duration_ms,
         overall_bitrate_bps=overall_bitrate_bps,
         video_bitrate_bps=overall_bitrate_bps,
@@ -173,13 +218,48 @@ def _find_mediainfo_xml(media_file: Path) -> Path | None:
 def _find_nfo_file(media_file: Path) -> Path | None:
     parent = media_file.parent
     candidates = [
-        parent / "movie.nfo",
         parent / f"{media_file.stem}.nfo",
+        parent / "movie.nfo",
         parent / "tvshow.nfo",
+        parent.parent / "tvshow.nfo" if parent.parent else None,
     ]
     for candidate in candidates:
+        if candidate is None:
+            continue
         if candidate.exists() and candidate.is_file():
             return candidate
+
+    target = _normalize_match_token(media_file.stem)
+    best: tuple[int, Path] | None = None
+    for candidate in parent.glob("*.nfo"):
+        if not candidate.is_file():
+            continue
+        score = 0
+        token = _normalize_match_token(candidate.stem)
+        if token == target:
+            score += 100
+        elif token and target and (token in target or target in token):
+            score += 50
+        if candidate.stem.lower() in {"movie", "tvshow", "episode"}:
+            score -= 10
+        if best is None or score > best[0]:
+            best = (score, candidate)
+
+    if best and best[0] > 0:
+        return best[1]
+
+    return None
+
+
+def _find_series_tvshow_nfo(media_file: Path) -> Path | None:
+    current = media_file.parent
+    for _ in range(5):
+        candidate = current / "tvshow.nfo"
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        if current.parent == current:
+            break
+        current = current.parent
     return None
 
 
@@ -228,7 +308,7 @@ def _find_default_audio_track(root: ElementTree.Element) -> ElementTree.Element 
 def _find_text(node: ElementTree.Element | None, tag_name: str) -> str | None:
     if node is None:
         return None
-    if tag_name in {"title", "originaltitle", "runtime", "duration", "bitrate"}:
+    if tag_name in {"title", "originaltitle", "runtime", "duration", "bitrate", "showtitle", "tvshowtitle", "season", "episode"}:
         child = node.find(f"./{tag_name}")
     else:
         child = node.find(f"./{{*}}{tag_name}")
@@ -330,31 +410,34 @@ def _extract_number(value: str | None) -> float | None:
 
 
 def _format_resolution(width: int | None, height: int | None) -> str | None:
+    if width is not None and height is not None:
+        # Handle cinemascope crops (for example 1920x960) as their source tier.
+        if width >= 3400 and height >= 1500:
+            return "4K"
+        if width >= 2500 and height >= 1300:
+            return "1440p"
+        if width >= 1800 and height >= 800:
+            return "1080p"
+        if width >= 1200 and height >= 520:
+            return "720p"
+
     if height is None:
         return None
     if height >= 2160:
         return "4K"
+    if height >= 1440:
+        return "1440p"
+    if height >= 900:
+        return "1080p"
+    if height >= 680:
+        return "720p"
     return f"{height}p"
-
 
 def _first_non_empty(*values: str | None) -> str | None:
     for value in values:
         if value and value.strip():
             return value.strip()
     return None
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _normalize_match_token(value: str) -> str:

@@ -92,6 +92,6 @@ def test_dashboard_widget_compact_response() -> None:
 
         assert len(payload["sessions"]) == 2
         assert payload["hidden_count"] == 1
-        assert payload["sessions"][0]["poster_url"].startswith("/api/v1/posters/")
+        assert payload["sessions"][0]["poster_url"].startswith("/api/posters/")
     finally:
         app.dependency_overrides.clear()

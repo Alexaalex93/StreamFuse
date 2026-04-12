@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <PLUGIN name="streamfuse-widget"
         author="alexaalex93"
-        version="0.2.3"
+        version="0.2.4"
         pluginURL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/plg/streamfuse-widget.plg"
         icon="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/assets/streamfuse-icon.png">
 
@@ -19,6 +19,7 @@
   <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/config.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/config.php" />
   <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/save.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/save.php" />
   <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/widget_data.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/widget_data.php" />
+  <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/api/poster.php" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/api/poster.php" />
 
   <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.css" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.css" />
   <FILE Name="/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.js" URL="https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/plugin-unraid/runtime/usr/local/emhttp/plugins/streamfuse-widget/widget/widget.js" />
@@ -43,3 +44,5 @@ rm -rf /usr/local/emhttp/plugins/streamfuse-widget
 rm -rf /boot/config/plugins/streamfuse-widget
 ]]></FILE>
 </PLUGIN>
+
+

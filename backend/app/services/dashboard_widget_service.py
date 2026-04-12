@@ -28,6 +28,7 @@ class DashboardWidgetService:
 
         tautulli_count = sum(1 for row in active_rows if row.source == StreamSource.TAUTULLI)
         sftpgo_count = sum(1 for row in active_rows if row.source == StreamSource.SFTPGO)
+        samba_count = sum(1 for row in active_rows if row.source == StreamSource.SAMBA)
         total_bandwidth_bps = sum(row.bandwidth_bps or 0 for row in active_rows)
 
         sessions = [
@@ -40,7 +41,7 @@ class DashboardWidgetService:
                 bandwidth_bps=row.bandwidth_bps,
                 bandwidth_human=row.bandwidth_human,
                 ip_address=row.ip_address,
-                poster_url=f"/api/v1/posters/{row.id}",
+                poster_url=f"/api/posters/{row.id}",
             )
             for row in visible_rows
         ]
@@ -49,6 +50,7 @@ class DashboardWidgetService:
             active_sessions=len(active_rows),
             tautulli_sessions=tautulli_count,
             sftpgo_sessions=sftpgo_count,
+            samba_sessions=samba_count,
             total_bandwidth_bps=total_bandwidth_bps,
             total_bandwidth_human=_format_bps(total_bandwidth_bps),
             updated_at=datetime.now(timezone.utc),
@@ -68,3 +70,4 @@ def _format_bps(bps: int) -> str:
     if mbps < 1000:
         return f"{mbps:.1f} Mbps"
     return f"{(mbps / 1000):.2f} Gbps"
+

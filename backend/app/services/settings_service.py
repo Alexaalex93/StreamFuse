@@ -20,6 +20,16 @@ class SettingsService:
     KEY_SAMBA_ENABLED = "samba_enabled"
     KEY_SAMBA_STATUS_JSON_PATH = "samba_status_json_path"
     KEY_SAMBA_PATH_MAPPINGS = "samba_path_mappings"
+
+    KEY_UNRAID_METRICS_ENABLED = "unraid_metrics_enabled"
+    KEY_UNRAID_METRICS_JSON_PATH = "unraid_metrics_json_path"
+    KEY_USE_UNRAID_TOTALS = "use_unraid_totals"
+
+    KEY_ENERGY_TARIFF_PUNTA = "energy_tariff_punta_eur_kwh"
+    KEY_ENERGY_TARIFF_LLANO = "energy_tariff_llano_eur_kwh"
+    KEY_ENERGY_TARIFF_VALLE = "energy_tariff_valle_eur_kwh"
+    KEY_ENERGY_TARIFF_WEEKEND = "energy_tariff_weekend_eur_kwh"
+
     KEY_POLLING_FREQUENCY_SECONDS = "polling_frequency_seconds"
     KEY_TIMEZONE = "timezone"
     KEY_MEDIA_ROOT_PATHS = "media_root_paths"
@@ -38,6 +48,13 @@ class SettingsService:
         KEY_SAMBA_ENABLED: "Samba ingestion enabled",
         KEY_SAMBA_STATUS_JSON_PATH: "Samba smbstatus JSON path",
         KEY_SAMBA_PATH_MAPPINGS: "Samba path mappings as JSON list",
+        KEY_UNRAID_METRICS_ENABLED: "Enable Unraid system metrics ingestion",
+        KEY_UNRAID_METRICS_JSON_PATH: "Unraid metrics JSON snapshot path",
+        KEY_USE_UNRAID_TOTALS: "Use Unraid totals for total shared/bandwidth",
+        KEY_ENERGY_TARIFF_PUNTA: "Energy tariff punta (EUR/kWh)",
+        KEY_ENERGY_TARIFF_LLANO: "Energy tariff llano (EUR/kWh)",
+        KEY_ENERGY_TARIFF_VALLE: "Energy tariff valle (EUR/kWh)",
+        KEY_ENERGY_TARIFF_WEEKEND: "Energy tariff weekend (EUR/kWh)",
         KEY_POLLING_FREQUENCY_SECONDS: "Polling frequency in seconds",
         KEY_TIMEZONE: "Display timezone",
         KEY_MEDIA_ROOT_PATHS: "Media root paths as JSON list",
@@ -106,6 +123,22 @@ class SettingsService:
                     self._serialize_list(self._parse_csv(self.app_settings.samba_path_mappings)),
                 )
             ),
+            unraid_metrics_enabled=self._parse_bool(
+                self._value_or_default(by_key, self.KEY_UNRAID_METRICS_ENABLED, "false")
+            ),
+            unraid_metrics_json_path=self._value_or_default(
+                by_key,
+                self.KEY_UNRAID_METRICS_JSON_PATH,
+                "",
+            )
+            or None,
+            use_unraid_totals=self._parse_bool(
+                self._value_or_default(by_key, self.KEY_USE_UNRAID_TOTALS, "false")
+            ),
+            energy_tariff_punta_eur_kwh=self._float_or_default(by_key, self.KEY_ENERGY_TARIFF_PUNTA, 0.22),
+            energy_tariff_llano_eur_kwh=self._float_or_default(by_key, self.KEY_ENERGY_TARIFF_LLANO, 0.15),
+            energy_tariff_valle_eur_kwh=self._float_or_default(by_key, self.KEY_ENERGY_TARIFF_VALLE, 0.10),
+            energy_tariff_weekend_eur_kwh=self._float_or_default(by_key, self.KEY_ENERGY_TARIFF_WEEKEND, 0.10),
             polling_frequency_seconds=int(
                 self._value_or_default(
                     by_key,
@@ -161,6 +194,22 @@ class SettingsService:
             self._set(self.KEY_SAMBA_STATUS_JSON_PATH, payload.samba_status_json_path)
         if payload.samba_path_mappings is not None:
             self._set(self.KEY_SAMBA_PATH_MAPPINGS, self._serialize_list(payload.samba_path_mappings))
+
+        if payload.unraid_metrics_enabled is not None:
+            self._set(self.KEY_UNRAID_METRICS_ENABLED, str(payload.unraid_metrics_enabled).lower())
+        if payload.unraid_metrics_json_path is not None:
+            self._set(self.KEY_UNRAID_METRICS_JSON_PATH, payload.unraid_metrics_json_path)
+        if payload.use_unraid_totals is not None:
+            self._set(self.KEY_USE_UNRAID_TOTALS, str(payload.use_unraid_totals).lower())
+
+        if payload.energy_tariff_punta_eur_kwh is not None:
+            self._set(self.KEY_ENERGY_TARIFF_PUNTA, str(payload.energy_tariff_punta_eur_kwh))
+        if payload.energy_tariff_llano_eur_kwh is not None:
+            self._set(self.KEY_ENERGY_TARIFF_LLANO, str(payload.energy_tariff_llano_eur_kwh))
+        if payload.energy_tariff_valle_eur_kwh is not None:
+            self._set(self.KEY_ENERGY_TARIFF_VALLE, str(payload.energy_tariff_valle_eur_kwh))
+        if payload.energy_tariff_weekend_eur_kwh is not None:
+            self._set(self.KEY_ENERGY_TARIFF_WEEKEND, str(payload.energy_tariff_weekend_eur_kwh))
 
         if payload.polling_frequency_seconds is not None:
             self._set(self.KEY_POLLING_FREQUENCY_SECONDS, str(payload.polling_frequency_seconds))
@@ -241,6 +290,14 @@ class SettingsService:
         return row.value
 
     @staticmethod
+    def _float_or_default(by_key: dict[str, AppSettingModel], key: str, default: float) -> float:
+        value = SettingsService._value_or_default(by_key, key, str(default))
+        try:
+            return float(str(value).replace(",", "."))
+        except Exception:
+            return default
+
+    @staticmethod
     def _mask_secret(secret: str) -> str | None:
         if not secret:
             return None
@@ -268,3 +325,6 @@ class SettingsService:
         except Exception:
             return "UTC"
         return tz_name
+
+
+

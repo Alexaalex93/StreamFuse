@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
 
-import { getBackendBase } from "@/shared/api/client";
+import { apiGet } from "@/shared/api/client";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/states/EmptyState";
@@ -88,12 +88,7 @@ export function HistoryPage() {
         limit: "500",
       });
 
-      const response = await fetch(`${getBackendBase()}/api/sessions/history${query}`);
-      if (!response.ok) {
-        throw new Error(`History endpoint failed (${response.status})`);
-      }
-
-      const data = (await response.json()) as UnifiedSession[];
+      const data = await apiGet<UnifiedSession[]>(`/sessions/history${query}`);
       setRows(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load history");
@@ -268,3 +263,4 @@ export function HistoryPage() {
     </div>
   );
 }
+

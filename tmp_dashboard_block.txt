@@ -1,0 +1,91 @@
+  const fetchData = async () => {
+    try {
+      setError(null);
+      const activeQuery = buildQuery({
+        user_name: userQuery || undefined,
+        source: sourceFilter === "all" ? undefined : sourceFilter,
+        media_type: mediaTypeFilter === "all" ? undefined : mediaTypeFilter,
+        limit: "120",
+      });
+
+      const activeData = await apiGetWithFallback<UnifiedSession[]>([`/sessions/active${activeQuery}`, `/api/sessions/active${activeQuery}`]);
+      const historyData = await apiGetWithFallback<UnifiedSession[]>(["/sessions/history?limit=8", "/api/sessions/history?limit=8"]);
+      const overviewData = await apiGetWithFallback<OverviewStats>(["/stats/overview", "/api/stats/overview"]);
+
+      let systemData: SystemMetricsResponse | null = null;
+      try {
+        systemData = await apiGet<SystemMetricsResponse>("/system/metrics");
+      } catch {
+        systemData = null;
+      }
+
+      const dedupedActive = dedupeTransferSessions(activeData);
+      const stableActive = orderActiveSessionsStable(dedupedActive);
+
+      setActiveSessions(stableActive);
+      setRecentSessions(historyData);
+      setSystemMetrics(systemData);
+      const unraidShared = systemData?.transfer?.total_shared_human;
+      setTotalSharedHuman(unraidShared && unraidShared !== "0 B" ? unraidShared : (overviewData.total_shared_human || "0 B"));
+
+      const inBps = systemData?.network?.inbound_bps ?? null;
+      const outBps = systemData?.network?.outbound_bps ?? null;
+      setInboundSeries((prev) => [...prev.slice(-59), inBps ?? 0]);
+      setOutboundSeries((prev) => [...prev.slice(-59), outBps ?? 0]);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    void fetchData();
+  }, [userQuery, sourceFilter, mediaTypeFilter]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void fetchData();
+    }, 1000);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [userQuery, sourceFilter, mediaTypeFilter]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      void fetchData();
+    };
+    const onNewFilter = () => {
+      clearFilters();
+    };
+
+    window.addEventListener("streamfuse:refresh", onRefresh);
+    window.addEventListener("streamfuse:new-filter", onNewFilter);
+    return () => {
+      window.removeEventListener("streamfuse:refresh", onRefresh);
+      window.removeEventListener("streamfuse:new-filter", onNewFilter);
+    };
+  }, [userQuery, sourceFilter, mediaTypeFilter]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setInboundSeries((prev) => {
+        const last = prev.length ? prev[prev.length - 1] : targetInboundBps;
+        const next = last + (targetInboundBps - last) * 0.35;
+        return [...prev.slice(-239), next];
+      });
+      setOutboundSeries((prev) => {
+        const last = prev.length ? prev[prev.length - 1] : targetOutboundBps;
+        const next = last + (targetOutboundBps - last) * 0.35;
+        return [...prev.slice(-239), next];
+      });
+    }, 250);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [targetInboundBps, targetOutboundBps]);
+

@@ -3,8 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
 import { OverviewStats } from "@/types/stats";
+import { SystemMetricsResponse } from "@/types/system";
 
-import { getBackendBase } from "@/shared/api/client";
+import { apiGet, apiGetWithFallback } from "@/shared/api/client";
 import { relativeFromNow } from "@/shared/lib/date";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { StatCard } from "@/shared/ui/cards/StatCard";
@@ -22,6 +23,170 @@ function formatBandwidth(totalBps: number): string {
     return `${mbps.toFixed(1)} Mbps`;
   }
   return `${(mbps / 1000).toFixed(2)} Gbps`;
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (!value || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let current = value;
+  let idx = 0;
+  while (current >= 1024 && idx < units.length - 1) {
+    current /= 1024;
+    idx += 1;
+  }
+  return idx === 0 ? `${Math.round(current)} ${units[idx]}` : `${current.toFixed(1)} ${units[idx]}`;
+}
+
+function formatMoney(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "n/a";
+  }
+  return `${value.toFixed(2)} EUR`;
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "n/a";
+  }
+  return `${value.toFixed(1)}%`;
+}
+
+function formatTrafficRate(bps: number): string {
+  if (!Number.isFinite(bps) || bps <= 0) {
+    return "0 kbps";
+  }
+  const kbps = bps / 1000;
+  if (kbps < 1000) {
+    return `${kbps.toFixed(1)} kbps`;
+  }
+  return `${(kbps / 1000).toFixed(2)} Mbps`;
+}
+
+function smoothSeries(values: number[]): number[] {
+  if (values.length < 3) {
+    return values;
+  }
+
+  const weighted = values.map((value, index) => {
+    const prev = values[index - 1] ?? value;
+    const next = values[index + 1] ?? value;
+    return prev * 0.2 + value * 0.6 + next * 0.2;
+  });
+
+  const out: number[] = [];
+  let ema = weighted[0];
+  const alpha = 0.35;
+  for (const value of weighted) {
+    ema = ema + alpha * (value - ema);
+    out.push(ema);
+  }
+  return out;
+}
+
+function buildSmoothPath(values: number[], maxValue: number): string {
+  if (values.length === 0) {
+    return "";
+  }
+  if (values.length === 1) {
+    return "M50,50";
+  }
+
+  const points = values.map((value, index) => ({
+    x: (index / (values.length - 1)) * 100,
+    y: 100 - (Math.max(0, value) / maxValue) * 100,
+  }));
+
+  let d = `M${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
+  }
+
+  return d;
+}
+
+function NetworkTrafficChart({
+  inboundPoints,
+  outboundPoints,
+  inboundLegendBps,
+  outboundLegendBps,
+  maxDisplayBps,
+  maxLabelBps,
+}: {
+  inboundPoints: number[];
+  outboundPoints: number[];
+  inboundLegendBps: number;
+  outboundLegendBps: number;
+  maxDisplayBps: number;
+  maxLabelBps: number;
+}) {
+  const len = Math.max(inboundPoints.length, outboundPoints.length);
+  if (len < 2) {
+    return <div className="h-28 w-full rounded-xl border border-white/10 bg-white/[0.02]" />;
+  }
+
+  const inSeriesRaw =
+    inboundPoints.length === len ? inboundPoints : [...Array(len - inboundPoints.length).fill(0), ...inboundPoints];
+  const outSeriesRaw =
+    outboundPoints.length === len ? outboundPoints : [...Array(len - outboundPoints.length).fill(0), ...outboundPoints];
+
+  const inSeries = smoothSeries(inSeriesRaw);
+  const outSeries = smoothSeries(outSeriesRaw);
+  const liveSeriesPeak = Math.max(1, ...inSeriesRaw, ...outSeriesRaw) * 1.06;
+  const maxValue = Math.max(1, maxDisplayBps, liveSeriesPeak);
+
+  const inboundPath = buildSmoothPath(inSeries, maxValue);
+  const outboundPath = buildSmoothPath(outSeries, maxValue);
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-5 text-xs">
+        <span className="text-red-400">Inbound {formatTrafficRate(inboundLegendBps)}</span>
+        <span className="text-amber-400">Outbound {formatTrafficRate(outboundLegendBps)}</span>
+      </div>
+      <div className="relative">
+        <span className="absolute right-0 top-0 text-[11px] text-fg-muted">{formatTrafficRate(maxLabelBps)}</span>
+        <svg viewBox="0 0 100 100" className="h-28 w-full" preserveAspectRatio="none">
+          <g className="stroke-white/15" strokeWidth="0.35">
+            <line x1="0" y1="20" x2="100" y2="20" />
+            <line x1="0" y1="40" x2="100" y2="40" />
+            <line x1="0" y1="60" x2="100" y2="60" />
+            <line x1="0" y1="80" x2="100" y2="80" />
+          </g>
+          <path
+            d={outboundPath}
+            className="fill-none stroke-amber-400"
+            strokeWidth="1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={inboundPath}
+            className="fill-none stroke-red-500"
+            strokeWidth="1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      </div>
+      <div className="mt-1 flex items-center justify-start text-[11px] text-fg-muted">
+        <span>0 kbps</span>
+      </div>
+    </div>
+  );
 }
 
 function buildQuery(params: Record<string, string | undefined>): string {
@@ -115,13 +280,24 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [totalSharedHuman, setTotalSharedHuman] = useState<string>("0 B");
+  const [totalSharedBytes, setTotalSharedBytes] = useState<number>(0);
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetricsResponse | null>(null);
+  const [inboundSeries, setInboundSeries] = useState<number[]>([]);
+  const [outboundSeries, setOutboundSeries] = useState<number[]>([]);
+  const [targetInboundBps, setTargetInboundBps] = useState<number>(0);
+  const [targetOutboundBps, setTargetOutboundBps] = useState<number>(0);
+  const [displayInboundBps, setDisplayInboundBps] = useState<number>(0);
+  const [displayOutboundBps, setDisplayOutboundBps] = useState<number>(0);
+  const [chartMaxBps, setChartMaxBps] = useState<number>(1);
+  const [maxLabelBps, setMaxLabelBps] = useState<number>(1);
 
   const [userQuery, setUserQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | StreamSource>("all");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | MediaType>("all");
 
   const orderBySessionRef = useRef<Map<string, number>>(new Map());
+  const liveInboundRef = useRef<number>(0);
+  const liveOutboundRef = useRef<number>(0);
   const nextOrderIndexRef = useRef(0);
 
   const orderActiveSessionsStable = (sessions: UnifiedSession[]): UnifiedSession[] => {
@@ -155,7 +331,6 @@ export function DashboardPage() {
   const fetchData = async () => {
     try {
       setError(null);
-      const backend = getBackendBase();
       const activeQuery = buildQuery({
         user_name: userQuery || undefined,
         source: sourceFilter === "all" ? undefined : sourceFilter,
@@ -163,29 +338,34 @@ export function DashboardPage() {
         limit: "120",
       });
 
-      const activeResponse = await fetch(`${backend}/api/sessions/active${activeQuery}`);
-      if (!activeResponse.ok) {
-        throw new Error(`Active sessions failed (${activeResponse.status})`);
-      }
-      const activeData = (await activeResponse.json()) as UnifiedSession[];
+      const activeData = await apiGetWithFallback<UnifiedSession[]>([`/sessions/active${activeQuery}`, `/api/sessions/active${activeQuery}`]);
+      const historyData = await apiGetWithFallback<UnifiedSession[]>(["/sessions/history?limit=8", "/api/sessions/history?limit=8"]);
+      const overviewData = await apiGetWithFallback<OverviewStats>(["/stats/overview", "/api/stats/overview"]);
 
-      const historyResponse = await fetch(`${backend}/api/sessions/history?limit=8`);
-      const overviewResponse = await fetch(`${backend}/api/stats/overview`);
-      if (!historyResponse.ok) {
-        throw new Error(`History failed (${historyResponse.status})`);
+      let systemData: SystemMetricsResponse | null = null;
+      try {
+        systemData = await apiGet<SystemMetricsResponse>("/system/metrics");
+      } catch {
+        systemData = null;
       }
-      if (!overviewResponse.ok) {
-        throw new Error(`Stats overview failed (${overviewResponse.status})`);
-      }
-      const historyData = (await historyResponse.json()) as UnifiedSession[];
-      const overviewData = (await overviewResponse.json()) as OverviewStats;
 
       const dedupedActive = dedupeTransferSessions(activeData);
       const stableActive = orderActiveSessionsStable(dedupedActive);
 
       setActiveSessions(stableActive);
       setRecentSessions(historyData);
-      setTotalSharedHuman(overviewData.total_shared_human || "0 B");
+      setSystemMetrics(systemData);
+      const overviewSharedBytes = overviewData.total_shared_bytes ?? 0;
+      const unraidSharedBytes = systemData?.transfer?.total_shared_bytes ?? 0;
+      const bestSharedBytes = Math.max(overviewSharedBytes, unraidSharedBytes);
+      setTotalSharedBytes((prev) => Math.max(prev, bestSharedBytes));
+      const inBps = systemData?.network?.inbound_bps ?? 0;
+      const outBps = systemData?.network?.outbound_bps ?? 0;
+      setTargetInboundBps(inBps);
+      setTargetOutboundBps(outBps);
+      setDisplayInboundBps(inBps);
+      setDisplayOutboundBps(outBps);
+      setMaxLabelBps(Math.max(1, inBps, outBps) * 1.12);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
@@ -225,10 +405,40 @@ export function DashboardPage() {
     };
   }, [userQuery, sourceFilter, mediaTypeFilter]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setInboundSeries((prev) => {
+        const series = prev.length ? prev : [targetInboundBps];
+        const last = series[series.length - 1] ?? targetInboundBps;
+        const next = last + (targetInboundBps - last) * 0.09;
+        liveInboundRef.current = next;
+        return [...series.slice(-299), next];
+      });
+      setOutboundSeries((prev) => {
+        const series = prev.length ? prev : [targetOutboundBps];
+        const last = series[series.length - 1] ?? targetOutboundBps;
+        const next = last + (targetOutboundBps - last) * 0.09;
+        liveOutboundRef.current = next;
+        return [...series.slice(-299), next];
+      });
+      setChartMaxBps((prev) => {
+        const livePeak = Math.max(1, liveInboundRef.current, liveOutboundRef.current) * 1.1;
+        if (livePeak > prev * 0.98) {
+          return livePeak;
+        }
+        return prev + (livePeak - prev) * 0.03;
+      });
+    }, 60);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [targetInboundBps, targetOutboundBps]);
   const derived = useMemo(() => {
     const sessionsActive = activeSessions.length;
     const usersActive = new Set(activeSessions.map((session) => session.user_name)).size;
-    const totalBandwidth = activeSessions.reduce((sum, session) => sum + (session.bandwidth_bps ?? 0), 0);
+    const sessionsBandwidth = activeSessions.reduce((sum, session) => sum + (session.bandwidth_bps ?? 0), 0);
+    const totalBandwidth = Math.round(systemMetrics?.transfer?.total_bandwidth_bps ?? sessionsBandwidth);
     const tautulliCount = activeSessions.filter((session) => session.source === "tautulli").length;
     const sftpgoCount = activeSessions.filter((session) => session.source === "sftpgo").length;
     const sambaCount = activeSessions.filter((session) => session.source === "samba").length;
@@ -241,7 +451,7 @@ export function DashboardPage() {
       sftpgoCount,
       sambaCount,
     };
-  }, [activeSessions]);
+    }, [activeSessions, systemMetrics]);
 
   const relatedSessions = useMemo(() => {
     if (!selectedSession) {
@@ -268,14 +478,41 @@ export function DashboardPage() {
           <p className="text-sm text-fg-muted">Live monitoring of active sessions and recent activity.</p>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7">
+        <section className="rounded-2xl border border-white/10 bg-card p-5 shadow-premium">
+          <div className="mb-4">
+            <h2 className="font-display text-2xl text-white">System Health</h2>
+            <p className="text-sm text-fg-muted">Live metrics from Unraid snapshot (CPU/GPU/RAM/Network/Energy).</p>
+          </div>
+
+          {!systemMetrics?.enabled ? (
+            <p className="text-sm text-fg-muted">Enable Unraid metrics in Settings to show host telemetry.</p>
+          ) : !systemMetrics?.source_available ? (
+            <p className="text-sm text-fg-muted">Waiting for Unraid metrics JSON file.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+                <StatCard label="CPU" value={formatPercent(systemMetrics.load.cpu_percent)} hint={systemMetrics.identity.cpu_model || "n/a"} />
+                <StatCard label="GPU" value={formatPercent(systemMetrics.load.gpu_percent)} hint={systemMetrics.identity.gpu_model || "n/a"} />
+                <StatCard label="RAM Used" value={formatBytes(systemMetrics.load.ram_used_bytes)} hint={`Free ${formatBytes(systemMetrics.load.ram_free_bytes)}`} />
+                <StatCard label="Inbound" value={formatBandwidth(Math.round(systemMetrics.network.inbound_bps ?? 0))} hint="Network in" />
+                <StatCard label="Outbound" value={formatBandwidth(Math.round(systemMetrics.network.outbound_bps ?? 0))} hint="Network out" />
+                <StatCard label="Power / Month" value={`${(systemMetrics.energy.power_watts ?? 0).toFixed(0)} W`} hint={formatMoney(systemMetrics.energy.estimated_month_cost_eur)} />
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-fg-muted">Network traffic (real-time)</p>
+                <NetworkTrafficChart inboundPoints={inboundSeries} outboundPoints={outboundSeries} inboundLegendBps={displayInboundBps} outboundLegendBps={displayOutboundBps} maxDisplayBps={chartMaxBps} maxLabelBps={maxLabelBps} />
+              </div>
+            </div>
+          )}
+        </section>
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
           <StatCard label="Active Sessions" value={String(derived.sessionsActive)} hint="Live right now" />
           <StatCard label="Active Users" value={String(derived.usersActive)} hint="Unique users" />
-          <StatCard label="Total Bandwidth" value={formatBandwidth(derived.totalBandwidth)} hint="Aggregated live" />
           <StatCard label="Tautulli Sessions" value={String(derived.tautulliCount)} hint="Playback sessions" />
           <StatCard label="SFTPGo Sessions" value={String(derived.sftpgoCount)} hint="Transfer sessions" />
           <StatCard label="Samba Sessions" value={String(derived.sambaCount)} hint="SMB sessions" />
-          <StatCard label="Total Shared" value={totalSharedHuman} hint="Cumulative transferred" />
+          <StatCard label="Total Shared" value={formatBytes(totalSharedBytes)} hint="Cumulative transferred" />
         </section>
 
         <FilterPanel
@@ -361,3 +598,31 @@ export function DashboardPage() {
     </>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

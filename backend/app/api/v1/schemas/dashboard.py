@@ -9,6 +9,7 @@ class DashboardWidgetSummary(BaseModel):
     active_sessions: int
     tautulli_sessions: int
     sftpgo_sessions: int
+    samba_sessions: int
     total_bandwidth_bps: int
     total_bandwidth_human: str
     updated_at: datetime

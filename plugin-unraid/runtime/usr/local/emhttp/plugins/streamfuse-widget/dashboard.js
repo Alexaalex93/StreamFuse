@@ -34,12 +34,30 @@
 
     summaryEl.innerHTML =
       '<div class="sf-kpis">' +
-        '<div class="sf-kpi"><span>Active</span><strong>' + active + '</strong></div>' +
-        '<div class="sf-kpi"><span>Tautulli</span><strong>' + tautulli + '</strong></div>' +
-        '<div class="sf-kpi"><span>SFTPGo</span><strong>' + sftpgo + '</strong></div>' +
-        '<div class="sf-kpi"><span>Samba</span><strong>' + samba + '</strong></div>' +
+      '<div class="sf-kpi"><span>Active</span><strong>' +
+      active +
+      '</strong></div>' +
+      '<div class="sf-kpi"><span>Tautulli</span><strong>' +
+      tautulli +
+      '</strong></div>' +
+      '<div class="sf-kpi"><span>SFTPGo</span><strong>' +
+      sftpgo +
+      '</strong></div>' +
+      '<div class="sf-kpi"><span>Samba</span><strong>' +
+      samba +
+      '</strong></div>' +
       '</div>' +
-      '<div style="margin-top:8px;color:#9ab0d8;font-size:12px;">Bandwidth: ' + esc(bw) + '</div>';
+      '<div class="sf-summary-bw">Bandwidth: ' +
+      esc(bw) +
+      '</div>';
+  }
+
+  function resolvePosterUrl(posterUrl) {
+    const fallback = '/plugins/streamfuse-widget/widget/assets/poster-placeholder.svg';
+    if (!posterUrl) return fallback;
+    const value = String(posterUrl).trim();
+    if (!value) return fallback;
+    return '/plugins/streamfuse-widget/api/poster.php?u=' + encodeURIComponent(value);
   }
 
   function sourceClass(source) {
@@ -56,23 +74,44 @@
       return;
     }
 
-    const rows = sessions.map((s) => {
-      const src = String(s.source || 'unknown').toUpperCase();
-      const cls = sourceClass(s.source);
-      const poster = s.poster_url || '/plugins/streamfuse-widget/widget/assets/poster-placeholder.svg';
-      return '' +
-        '<a class="sf-row" href="' + esc(appUrl) + '" target="_blank" rel="noopener noreferrer">' +
-          '<img class="sf-poster" src="' + esc(poster) + '" loading="lazy" />' +
+    const placeholder = '/plugins/streamfuse-widget/widget/assets/poster-placeholder.svg';
+    const rows = sessions
+      .map((s) => {
+        const src = String(s.source || 'unknown').toUpperCase();
+        const cls = sourceClass(s.source);
+        const poster = resolvePosterUrl(s.poster_url);
+        return (
+          '' +
+          '<a class="sf-row" href="' +
+          esc(appUrl) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          '<img class="sf-poster" src="' +
+          esc(poster) +
+          '" loading="lazy" onerror="this.onerror=null;this.src=\'' +
+          placeholder +
+          '\';" />' +
           '<div>' +
-            '<p class="sf-title">' + esc(s.title || 'n/a') + '</p>' +
-            '<div class="sf-meta">' +
-              '<span>' + esc(s.user_name || 'n/a') + '</span>' +
-              '<span class="sf-source ' + cls + '">' + esc(src) + '</span>' +
-              '<span>' + esc(s.bandwidth_human || 'n/a') + '</span>' +
-            '</div>' +
+          '<p class="sf-title">' +
+          esc(s.title || 'n/a') +
+          '</p>' +
+          '<div class="sf-meta">' +
+          '<span>' +
+          esc(s.user_name || 'n/a') +
+          '</span>' +
+          '<span class="sf-source ' +
+          cls +
+          '">' +
+          esc(src) +
+          '</span>' +
+          '<span>' +
+          esc(s.bandwidth_human || 'n/a') +
+          '</span>' +
           '</div>' +
-        '</a>';
-    }).join('');
+          '</div>' +
+          '</a>'
+        );
+      })
+      .join('');
 
     const hidden = Number(data?.hidden_count || 0);
     listEl.innerHTML = '<ul>' + rows + '</ul>' + (hidden > 0 ? '<p class="sf-more">+' + hidden + ' more</p>' : '');

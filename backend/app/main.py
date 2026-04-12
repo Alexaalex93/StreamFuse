@@ -1,20 +1,12 @@
-import asyncio
+﻿import asyncio
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.deps import get_current_user
 from app.api.routers import dashboard, unified_sessions
-from app.api.v1.routers import (
-    health,
-    history,
-    internal_sync,
-    posters,
-    sessions,
-    settings,
-    source_health,
-    stats,
-)
+from app.api.v1.routers import auth, health, history, internal_sync, posters, sessions, settings, source_health, stats, system
 from app.core.config import get_settings
 from app.jobs.background_sync import BackgroundSyncRunner
 
@@ -39,22 +31,28 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
+    # Legacy endpoints kept open for compatibility (e.g. Unraid widget).
     app.include_router(health.router, prefix="/api", tags=["health"])
     app.include_router(unified_sessions.router, prefix="/api/sessions", tags=["sessions"])
     app.include_router(stats.router, prefix="/api", tags=["stats"])
+    app.include_router(posters.router, prefix="/api", tags=["posters"])
     app.include_router(settings.router, prefix="/api", tags=["settings"])
     app.include_router(dashboard.router, prefix="/api", tags=["dashboard"])
     app.include_router(source_health.router, prefix="/api", tags=["source-health"])
 
+    # Protected API v1
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
-    app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
-    app.include_router(history.router, prefix="/api/v1", tags=["history"])
-    app.include_router(stats.router, prefix="/api/v1", tags=["stats"])
+    app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+    app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"], dependencies=[Depends(get_current_user)])
+    app.include_router(unified_sessions.router, prefix="/api/v1/sessions", tags=["sessions"], dependencies=[Depends(get_current_user)])
+    app.include_router(history.router, prefix="/api/v1", tags=["history"], dependencies=[Depends(get_current_user)])
+    app.include_router(stats.router, prefix="/api/v1", tags=["stats"], dependencies=[Depends(get_current_user)])
     app.include_router(posters.router, prefix="/api/v1", tags=["posters"])
-    app.include_router(internal_sync.router, prefix="/api/v1", tags=["internal-sync"])
-    app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
-    app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
-    app.include_router(source_health.router, prefix="/api/v1", tags=["source-health"])
+    app.include_router(internal_sync.router, prefix="/api/v1", tags=["internal-sync"], dependencies=[Depends(get_current_user)])
+    app.include_router(settings.router, prefix="/api/v1", tags=["settings"], dependencies=[Depends(get_current_user)])
+    app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"], dependencies=[Depends(get_current_user)])
+    app.include_router(source_health.router, prefix="/api/v1", tags=["source-health"], dependencies=[Depends(get_current_user)])
+    app.include_router(system.router, prefix="/api/v1", tags=["system"], dependencies=[Depends(get_current_user)])
 
     @app.on_event("startup")
     async def _startup_background_sync() -> None:
@@ -88,3 +86,8 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+
+
+

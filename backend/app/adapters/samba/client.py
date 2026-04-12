@@ -99,6 +99,10 @@ class SambaClient:
                 if not isinstance(open_info, dict):
                     continue
 
+                access_mask = open_info.get("access_mask") if isinstance(open_info.get("access_mask"), dict) else {}
+                if access_mask and access_mask.get("READ_DATA") is False:
+                    continue
+
                 server = open_info.get("server_id") if isinstance(open_info.get("server_id"), dict) else {}
                 pid = str(server.get("pid") or "").strip()
                 session = by_pid.get(pid, {})
@@ -159,3 +163,4 @@ def _session_remote_address(session: dict[str, Any]) -> str:
             return parts[1]
 
     return ""
+

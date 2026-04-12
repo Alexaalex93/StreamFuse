@@ -119,8 +119,8 @@ function extractBitrateText(session: UnifiedSession): string {
 
 export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-card shadow-premium">
-      <table className="w-full table-auto text-sm">
+    <div className="overflow-x-auto rounded-2xl border border-white/10 bg-card shadow-premium">
+      <table className="min-w-[900px] w-full table-auto text-sm">
         <thead className="bg-white/[0.03] text-left text-fg-muted">
           <tr>
             <th className="px-3 py-3 font-medium">Session</th>
@@ -196,4 +196,5 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
     </div>
   );
 }
+
 

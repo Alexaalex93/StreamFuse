@@ -34,9 +34,9 @@ export function StatCard({ label, value, hint, trend, icon, onClick, selected = 
       )}
     >
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-h-[3.35rem]">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-fg-muted">{label}</p>
-          <p className="mt-2 font-display text-3xl font-semibold text-white">{value}</p>
+          <p className="mt-2 font-display text-3xl font-semibold leading-none text-white whitespace-nowrap tabular-nums">{value}</p>
         </div>
         {icon ? <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">{icon}</div> : null}
       </div>
@@ -47,3 +47,4 @@ export function StatCard({ label, value, hint, trend, icon, onClick, selected = 
     </article>
   );
 }
+

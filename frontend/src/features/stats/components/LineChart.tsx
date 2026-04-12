@@ -15,14 +15,34 @@ type LineChartProps = {
 
 type NormalizedPoint = LinePoint & { x: number; y: number };
 
-function buildXTicks(points: LinePoint[]): string[] {
+type XTick = {
+  label: string;
+  x: number;
+};
+
+function uniqueSortedIndexes(indexes: number[], maxIndex: number): number[] {
+  return Array.from(new Set(indexes.filter((idx) => idx >= 0 && idx <= maxIndex))).sort((a, b) => a - b);
+}
+
+function buildXTicks(points: LinePoint[]): XTick[] {
+  if (points.length === 0) return [];
+  if (points.length === 1) return [{ label: points[0].label, x: 50 }];
+
+  const maxIndex = points.length - 1;
+  let indexes: number[];
+
   if (points.length <= 5) {
-    return points.map((point) => point.label);
+    indexes = points.map((_, index) => index);
+  } else if (points.length <= 12) {
+    indexes = [0, Math.floor(maxIndex * 0.25), Math.floor(maxIndex * 0.5), Math.floor(maxIndex * 0.75), maxIndex];
+  } else {
+    indexes = [0, Math.floor(maxIndex * 0.33), Math.floor(maxIndex * 0.66), maxIndex];
   }
 
-  const indexes = [0, Math.floor(points.length * 0.25), Math.floor(points.length * 0.5), Math.floor(points.length * 0.75), points.length - 1];
-  const unique = Array.from(new Set(indexes));
-  return unique.map((index) => points[index]?.label ?? "");
+  return uniqueSortedIndexes(indexes, maxIndex).map((index) => ({
+    label: points[index]?.label ?? "",
+    x: (index / maxIndex) * 100,
+  }));
 }
 
 export function LineChart({
@@ -61,6 +81,7 @@ export function LineChart({
     if (stats.normalized.length === 0) {
       return "";
     }
+
     return stats.normalized
       .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
       .join(" ");
@@ -69,7 +90,12 @@ export function LineChart({
   const hoverPoint = hoverIndex != null ? stats.normalized[hoverIndex] : null;
 
   const yTicks = useMemo(() => {
-    const tickValues = [stats.max, stats.min + (stats.max - stats.min) * 0.66, stats.min + (stats.max - stats.min) * 0.33, stats.min];
+    const tickValues = [
+      stats.max,
+      stats.min + (stats.max - stats.min) * 0.66,
+      stats.min + (stats.max - stats.min) * 0.33,
+      stats.min,
+    ];
     return tickValues.map((value) => (valueFormatter ? valueFormatter(value) : String(Math.round(value))));
   }, [stats.max, stats.min, valueFormatter]);
 
@@ -77,10 +103,14 @@ export function LineChart({
 
   return (
     <div className="relative">
-      <div className="grid grid-cols-[52px_1fr] gap-2">
+      {yAxisTitle ? <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-fg-muted">{yAxisTitle}</p> : null}
+
+      <div className="grid grid-cols-[68px_1fr] gap-2">
         <div className="flex h-48 flex-col justify-between text-[11px] text-fg-muted">
           {yTicks.map((tick, index) => (
-            <span key={`${tick}-${index}`} className="truncate">{tick}</span>
+            <span key={`${tick}-${index}`} className="truncate">
+              {tick}
+            </span>
           ))}
         </div>
 
@@ -103,33 +133,39 @@ export function LineChart({
           {path ? <path d={path} className={`${lineColorClass} fill-none`} strokeWidth="1.5" /> : null}
 
           {stats.normalized.map((point, index) => (
-            <g key={`${point.label}-${index}`}>
-              <circle
-                cx={point.x}
-                cy={point.y}
-                r={hoverIndex === index ? 1.5 : 1}
-                className="fill-cyan-200 transition"
-                onMouseEnter={() => setHoverIndex(index)}
-                onMouseLeave={() => setHoverIndex(null)}
-              />
-            </g>
+            <circle
+              key={`${point.label}-${index}`}
+              cx={point.x}
+              cy={point.y}
+              r={hoverIndex === index ? 1.5 : 1}
+              className="fill-cyan-200 transition"
+              onMouseEnter={() => setHoverIndex(index)}
+              onMouseLeave={() => setHoverIndex(null)}
+            />
           ))}
         </svg>
       </div>
 
-      <div className="mt-1 grid grid-cols-[52px_1fr] gap-2">
-        <span className="text-[11px] uppercase tracking-[0.08em] text-fg-muted">{yAxisTitle || "Y"}</span>
-        <div className="flex justify-between text-[11px] text-fg-muted">
-          {xTicks.map((label, index) => (
-            <span key={`${label}-${index}`} className="truncate">{label}</span>
+      <div className="mt-2 grid grid-cols-[68px_1fr] gap-2">
+        <span />
+        <div className="relative h-5">
+          {xTicks.map((tick, index) => (
+            <span
+              key={`${tick.label}-${index}`}
+              className="absolute top-0 w-20 -translate-x-1/2 truncate text-center text-[11px] text-fg-muted"
+              style={{ left: `${tick.x}%` }}
+              title={tick.label}
+            >
+              {tick.label}
+            </span>
           ))}
         </div>
       </div>
 
-      {xAxisTitle ? <p className="mt-1 text-[11px] uppercase tracking-[0.08em] text-fg-muted">{xAxisTitle}</p> : null}
+      {xAxisTitle ? <p className="mt-2 text-center text-[11px] uppercase tracking-[0.08em] text-fg-muted">{xAxisTitle}</p> : null}
 
       {hoverPoint ? (
-        <div className="pointer-events-none absolute right-2 top-2 max-w-[180px] rounded-lg border border-white/15 bg-[#050b16] px-2 py-1 text-xs text-fg">
+        <div className="pointer-events-none absolute right-2 top-2 max-w-[220px] rounded-lg border border-white/15 bg-[#050b16] px-2 py-1 text-xs text-fg">
           <p className="truncate">{hoverPoint.label}</p>
           <p className="text-cyan-200">{valueFormatter ? valueFormatter(hoverPoint.value) : hoverPoint.value}</p>
         </div>

@@ -1,4 +1,4 @@
-export type DailyPoint = {
+﻿export type DailyPoint = {
   day: string;
   sessions?: number;
   avg_bandwidth_bps?: number;
@@ -17,13 +17,19 @@ export type OverviewStats = {
   total_shared_bytes: number;
   total_shared_human: string;
   sessions_by_day: Array<{ day: string; sessions: number }>;
+  sessions_by_week: Array<{ day: string; sessions: number }>;
   sessions_by_month: Array<{ day: string; sessions: number }>;
   sessions_by_year: Array<{ day: string; sessions: number }>;
   bandwidth_by_day: Array<{ day: string; avg_bandwidth_bps: number }>;
+  bandwidth_by_week: Array<{ day: string; avg_bandwidth_bps: number }>;
   bandwidth_by_month: Array<{ day: string; avg_bandwidth_bps: number }>;
   bandwidth_by_year: Array<{ day: string; avg_bandwidth_bps: number }>;
   source_distribution: SourceCount[];
   active_by_source: SourceCount[];
+  play_count_by_weekday: Array<{ label: string; sessions: number }>;
+  play_count_by_hour: Array<{ hour: number; sessions: number }>;
+  play_count_by_platform: Array<{ label: string; sessions: number }>;
+  play_count_by_media_type: Array<{ label: string; sessions: number }>;
 };
 
 export type TopUser = {
@@ -44,6 +50,7 @@ export type TopMediaItem = {
   sessions: number;
   unique_users: number;
   avg_bandwidth_bps: number | null;
+  sample_session_id: number | null;
 };
 
 export type MediaStatsResponse = {
@@ -77,3 +84,10 @@ export type UserInsightsResponse = {
   timezone: string;
   play_count_rule: string;
 };
+
+
+
+
+
+
+

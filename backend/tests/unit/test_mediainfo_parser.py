@@ -18,7 +18,7 @@ def test_parse_mediainfo_from_sibling_xml() -> None:
     assert summary.duration_ms == 3_492_960
     assert summary.overall_bitrate_bps == 7_682_012
     assert summary.video_bitrate_bps == 6_249_140
-    assert summary.resolution == "960p"
+    assert summary.resolution == "1080p"
     assert summary.video_codec == "HEVC"
     assert summary.audio_codec == "E-AC-3"
     assert summary.audio_channels == 6
@@ -57,3 +57,4 @@ def test_parse_mediainfo_prefers_nfo_title_when_both_exist() -> None:
     assert summary.title == "NFO Preferred Title"
     assert summary.video_bitrate_bps == 3_500_000
     assert summary.overall_bitrate_bps == 4_000_000
+

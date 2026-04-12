@@ -9,6 +9,16 @@ from app.persistence.db import Base
 from app.persistence.models import app_setting  # noqa: F401
 
 
+def _auth_headers(client: TestClient) -> dict[str, str]:
+    auth = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "Alex1234"},
+    )
+    assert auth.status_code == 200
+    token = auth.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_settings_defaults_and_update_roundtrip() -> None:
     engine = create_engine(
         "sqlite://",
@@ -30,8 +40,9 @@ def test_settings_defaults_and_update_roundtrip() -> None:
 
     try:
         client = TestClient(app)
+        headers = _auth_headers(client)
 
-        initial = client.get("/api/v1/settings")
+        initial = client.get("/api/v1/settings", headers=headers)
         assert initial.status_code == 200
         initial_json = initial.json()
         assert initial_json["polling_frequency_seconds"] >= 5
@@ -52,7 +63,7 @@ def test_settings_defaults_and_update_roundtrip() -> None:
             "placeholder_path": "app/poster_resolver/assets/placeholder.svg",
             "history_retention_days": 45,
         }
-        updated = client.put("/api/v1/settings", json=payload)
+        updated = client.put("/api/v1/settings", json=payload, headers=headers)
         assert updated.status_code == 200
 
         updated_json = updated.json()
@@ -69,7 +80,7 @@ def test_settings_defaults_and_update_roundtrip() -> None:
         assert payload["tautulli_api_key"] not in (updated_json["tautulli_api_key_masked"] or "")
         assert payload["sftpgo_token"] not in (updated_json["sftpgo_token_masked"] or "")
 
-        fetched_again = client.get("/api/v1/settings")
+        fetched_again = client.get("/api/v1/settings", headers=headers)
         assert fetched_again.status_code == 200
         refetched_json = fetched_again.json()
         assert refetched_json["tautulli_url"] == payload["tautulli_url"]
@@ -100,6 +111,7 @@ def test_settings_reject_invalid_values() -> None:
 
     try:
         client = TestClient(app)
+        headers = _auth_headers(client)
         response = client.put(
             "/api/v1/settings",
             json={
@@ -108,6 +120,7 @@ def test_settings_reject_invalid_values() -> None:
                 "timezone": "Invalid/Timezone",
                 "history_retention_days": 0,
             },
+            headers=headers,
         )
         assert response.status_code == 422
     finally:

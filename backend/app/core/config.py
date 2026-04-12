@@ -34,8 +34,12 @@ class Settings(BaseSettings):
 
     poster_placeholder_path: str = "app/poster_resolver/assets/placeholder.svg"
     poster_allowed_roots: str = ""
+    auth_secret: str = "streamfuse-change-me-secret"
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+

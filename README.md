@@ -1,4 +1,4 @@
-# StreamFuse
+﻿# StreamFuse
 
 StreamFuse unifica actividad de Tautulli y SFTPGo en una sola interfaz moderna.
 
@@ -114,3 +114,11 @@ docker compose logs -f frontend
 docker login
 ./scripts/publish-dockerhub.ps1 -DockerUser "<dockerhub-user>" -Tag "v0.3.0"
 ```
+
+
+## Operacion Unraid
+
+Guia operativa completa (scripts Samba/SFTPGo/metricas, persistencia y troubleshooting):
+
+- [docs/UNRAID_OPERATIONS_RUNBOOK.md](docs/UNRAID_OPERATIONS_RUNBOOK.md)
+
