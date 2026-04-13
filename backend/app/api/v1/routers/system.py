@@ -11,6 +11,10 @@ from app.api.v1.schemas.system import (
     SystemTransfer,
 )
 from app.core.config import Settings
+from app.persistence.repositories.unified_stream_session_repository import (
+    SessionQueryFilters,
+    UnifiedStreamSessionRepository,
+)
 from app.services.unraid_metrics_service import UnraidMetricsService, format_bps, format_bytes
 
 router = APIRouter(prefix="/system")
@@ -23,6 +27,12 @@ def get_system_metrics(
 ) -> SystemMetricsResponse:
     service = UnraidMetricsService(db, app_settings)
     data = service.get_metrics()
+
+    # Media-only live bandwidth (StreamFuse active sessions), excludes other apps traffic.
+    session_repo = UnifiedStreamSessionRepository(db)
+    active_rows = session_repo.list_active(SessionQueryFilters(limit=1000))
+    media_outbound_bps = float(sum(row.bandwidth_bps or 0 for row in active_rows))
+    media_inbound_bps = 0.0
 
     return SystemMetricsResponse(
         enabled=data.enabled,
@@ -40,8 +50,8 @@ def get_system_metrics(
             ram_free_bytes=data.ram_free_bytes,
         ),
         network=SystemNetwork(
-            inbound_bps=data.inbound_bps,
-            outbound_bps=data.outbound_bps,
+            inbound_bps=media_inbound_bps,
+            outbound_bps=media_outbound_bps,
         ),
         energy=SystemEnergy(
             power_watts=data.power_watts,
@@ -52,7 +62,7 @@ def get_system_metrics(
         transfer=SystemTransfer(
             total_shared_bytes=data.total_shared_bytes,
             total_shared_human=format_bytes(data.total_shared_bytes),
-            total_bandwidth_bps=data.total_bandwidth_bps,
-            total_bandwidth_human=format_bps(data.total_bandwidth_bps),
+            total_bandwidth_bps=media_outbound_bps,
+            total_bandwidth_human=format_bps(media_outbound_bps),
         ),
     )

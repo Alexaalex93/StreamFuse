@@ -42,6 +42,8 @@ _MEDIA_FILE_EXTENSIONS = {
     ".divx",
     ".xvid",
 }
+_MIN_MEANINGFUL_TRANSFER_BYTES = 10 * 1024 * 1024
+_MIN_MEANINGFUL_DURATION_SECONDS = 180
 
 
 class SFTPGoSyncService:
@@ -464,6 +466,53 @@ class SFTPGoSyncService:
         return conn_total if conn_total is not None else log_total
 
     @staticmethod
+    def _extract_elapsed_seconds(connection: dict[str, Any], logs: list[dict[str, Any]]) -> int:
+        def to_epoch_ms(value: Any) -> int | None:
+            number = _to_int(value)
+            if number is None or number <= 0:
+                return None
+            if number < 10_000_000_000:
+                return number * 1000
+            return number
+
+        starts: list[int] = []
+        ends: list[int] = []
+
+        for key in ("connection_time", "start_time"):
+            v = to_epoch_ms(connection.get(key))
+            if v is not None:
+                starts.append(v)
+
+        transfers = connection.get("active_transfers")
+        if isinstance(transfers, list):
+            for transfer in transfers:
+                if not isinstance(transfer, dict):
+                    continue
+                v = to_epoch_ms(transfer.get("start_time"))
+                if v is not None:
+                    starts.append(v)
+
+        for key in ("current_time", "last_activity", "updated_at"):
+            v = to_epoch_ms(connection.get(key))
+            if v is not None:
+                ends.append(v)
+
+        for log in logs:
+            for key in ("current_time", "last_activity", "timestamp", "time"):
+                v = to_epoch_ms(log.get(key))
+                if v is not None:
+                    ends.append(v)
+
+        if not starts:
+            return 0
+
+        end_ms = max(ends) if ends else int(datetime.now(UTC).timestamp() * 1000)
+        start_ms = min(starts)
+        if end_ms <= start_ms:
+            return 0
+
+        return int((end_ms - start_ms) / 1000)
+    @staticmethod
     def _resolve_file_path(connection: dict[str, Any], logs: list[dict[str, Any]]) -> str | None:
         path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
         if path:
@@ -543,10 +592,13 @@ class SFTPGoSyncService:
     @staticmethod
     def _group_key(username: str, ip_address: str, file_path: str) -> str:
         return f"{username.strip().lower()}|{ip_address.strip()}|{file_path.strip().lower()}"
-
     def _looks_like_download(self, connection: dict[str, Any], logs: list[dict[str, Any]]) -> bool:
+        total_bytes = self._extract_total_bytes(connection, logs) or 0
+        elapsed_seconds = self._extract_elapsed_seconds(connection, logs)
+
+        has_download_signal = False
         if any(self._is_download_log(log) for log in logs):
-            return True
+            has_download_signal = True
 
         transfers = connection.get("active_transfers")
         if isinstance(transfers, list):
@@ -555,19 +607,21 @@ class SFTPGoSyncService:
                     continue
                 op = str(transfer.get("operation_type") or "").lower()
                 if op == "download":
-                    return True
+                    has_download_signal = True
+                    break
 
         info = str(connection.get("info") or "").lower()
         if "dl:" in info or "download" in info:
-            return True
+            has_download_signal = True
 
-        return False
+        return (
+            has_download_signal
+            and total_bytes >= _MIN_MEANINGFUL_TRANSFER_BYTES
+            and elapsed_seconds >= _MIN_MEANINGFUL_DURATION_SECONDS
+        )
 
-    @staticmethod
-    def _is_download_connection(connection: dict[str, Any]) -> bool:
-        command = str(connection.get("command") or "").upper()
-        if command == "RETR":
-            return True
+    def _is_download_connection(self, connection: dict[str, Any]) -> bool:
+        has_download_signal = False
 
         transfers = connection.get("active_transfers")
         if isinstance(transfers, list):
@@ -576,19 +630,20 @@ class SFTPGoSyncService:
                 and str(transfer.get("operation_type") or "").lower() == "download"
                 for transfer in transfers
             ):
-                return True
+                has_download_signal = True
 
         info = str(connection.get("info") or "").lower()
         if "dl:" in info or "download" in info:
-            return True
+            has_download_signal = True
 
         file_path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
         bytes_sent = _to_int(connection.get("bytes_sent")) or 0
-        if file_path and bytes_sent > 0:
-            return True
+        elapsed_seconds = self._extract_elapsed_seconds(connection, [])
 
-        return False
+        if file_path and bytes_sent >= _MIN_MEANINGFUL_TRANSFER_BYTES:
+            has_download_signal = True
 
+        return has_download_signal and elapsed_seconds >= _MIN_MEANINGFUL_DURATION_SECONDS
     def _connection_snapshot(
         self,
         connection: dict[str, Any],
@@ -700,6 +755,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
 
 
 
