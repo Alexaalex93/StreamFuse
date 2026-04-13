@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type MultiLinePoint = {
   label: string;
@@ -40,13 +40,18 @@ function uniqueOrderedLabels(series: MultiLineSeries[]): string[] {
   return labels;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function MultiLineChart({
   series,
   valueFormatter,
   yAxisTitle,
   xAxisTitle,
 }: MultiLineChartProps) {
-  const [hover, setHover] = useState<{ series: string; point: MultiLinePoint } | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const chartRef = useRef<HTMLDivElement | null>(null);
 
   const labels = useMemo(() => uniqueOrderedLabels(series), [series]);
 
@@ -84,7 +89,12 @@ export function MultiLineChart({
   }, [series, labels]);
 
   const yTicks = useMemo(() => {
-    const vals = [normalized.max, normalized.min + (normalized.max - normalized.min) * 0.66, normalized.min + (normalized.max - normalized.min) * 0.33, normalized.min];
+    const vals = [
+      normalized.max,
+      normalized.min + (normalized.max - normalized.min) * 0.66,
+      normalized.min + (normalized.max - normalized.min) * 0.33,
+      normalized.min,
+    ];
     return vals.map((v) => (valueFormatter ? valueFormatter(v) : String(Math.round(v))));
   }, [normalized.max, normalized.min, valueFormatter]);
 
@@ -94,6 +104,38 @@ export function MultiLineChart({
     if (normalized.labels.length <= 6) return normalized.labels.map((_, idx) => idx);
     return [0, Math.floor(max * 0.25), Math.floor(max * 0.5), Math.floor(max * 0.75), max];
   }, [normalized.labels]);
+
+  const hoverLabel = hoverIndex != null ? normalized.labels[hoverIndex] : null;
+  const hoverX =
+    hoverIndex != null && normalized.labels.length > 1
+      ? (hoverIndex / (normalized.labels.length - 1)) * 100
+      : normalized.labels.length === 1
+      ? 50
+      : null;
+
+  const hoverRows = useMemo(() => {
+    if (hoverIndex == null) return [] as Array<{ label: string; color: string; value: number }>;
+    return normalized.series.map((s) => ({
+      label: s.label,
+      color: s.color,
+      value: s.points[hoverIndex]?.value ?? 0,
+    }));
+  }, [hoverIndex, normalized.series]);
+
+  const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!chartRef.current || normalized.labels.length === 0) return;
+    const rect = chartRef.current.getBoundingClientRect();
+    const x = clamp(event.clientX - rect.left, 0, rect.width);
+    const idx =
+      normalized.labels.length === 1
+        ? 0
+        : clamp(Math.round((x / rect.width) * (normalized.labels.length - 1)), 0, normalized.labels.length - 1);
+    setHoverIndex(idx);
+  };
+
+  const onMouseLeave = () => {
+    setHoverIndex(null);
+  };
 
   return (
     <div className="relative">
@@ -115,33 +157,29 @@ export function MultiLineChart({
           ))}
         </div>
 
-        <svg viewBox="0 0 100 100" className="h-52 w-full overflow-visible" preserveAspectRatio="none">
-          <g className="stroke-white/15" strokeWidth="0.4">
-            <line x1="0" y1="20" x2="100" y2="20" />
-            <line x1="0" y1="40" x2="100" y2="40" />
-            <line x1="0" y1="60" x2="100" y2="60" />
-            <line x1="0" y1="80" x2="100" y2="80" />
-          </g>
+        <div ref={chartRef} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
+          <svg viewBox="0 0 100 100" className="h-52 w-full overflow-visible" preserveAspectRatio="none">
+            <g className="stroke-white/15" strokeWidth="0.4">
+              <line x1="0" y1="20" x2="100" y2="20" />
+              <line x1="0" y1="40" x2="100" y2="40" />
+              <line x1="0" y1="60" x2="100" y2="60" />
+              <line x1="0" y1="80" x2="100" y2="80" />
+            </g>
 
-          {normalized.series.map((s) => {
-            const d = s.points.map((p, idx) => `${idx === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
-            return <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth="0.42" />;
-          })}
+            {hoverX != null ? <line x1={hoverX} y1="0" x2={hoverX} y2="100" className="stroke-cyan-200/70" strokeWidth="0.5" /> : null}
 
-          {normalized.series.map((s) =>
-            s.points.map((p, idx) => (
-              <circle
-                key={`${s.label}-${idx}`}
-                cx={p.x}
-                cy={p.y}
-                r={0.32}
-                fill={s.color}
-                onMouseEnter={() => setHover({ series: s.label, point: { label: p.label, value: p.value } })}
-                onMouseLeave={() => setHover(null)}
-              />
-            )),
-          )}
-        </svg>
+            {normalized.series.map((s) => {
+              const d = s.points.map((p, idx) => `${idx === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+              return <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth="0.42" />;
+            })}
+
+            {normalized.series.map((s) =>
+              s.points.map((p, idx) => (
+                <circle key={`${s.label}-${idx}`} cx={p.x} cy={p.y} r={hoverIndex === idx ? 0.55 : 0.32} fill={s.color} />
+              )),
+            )}
+          </svg>
+        </div>
       </div>
 
       <div className="mt-2 grid grid-cols-[68px_1fr] gap-2">
@@ -161,14 +199,22 @@ export function MultiLineChart({
 
       {xAxisTitle ? <p className="mt-2 text-center text-[11px] uppercase tracking-[0.08em] text-fg-muted">{xAxisTitle}</p> : null}
 
-      {hover ? (
-        <div className="pointer-events-none absolute right-2 top-2 max-w-[260px] rounded-lg border border-white/15 bg-[#050b16] px-2 py-1 text-xs text-fg">
-          <p className="truncate">{hover.series}</p>
-          <p className="truncate text-fg-muted">{hover.point.label}</p>
-          <p className="text-cyan-200">{valueFormatter ? valueFormatter(hover.point.value) : hover.point.value}</p>
+      {hoverLabel ? (
+        <div className="pointer-events-none absolute right-2 top-2 max-w-[280px] rounded-lg border border-white/15 bg-[#050b16] px-2 py-1 text-xs text-fg">
+          <p className="truncate text-fg-muted">{hoverLabel}</p>
+          <div className="mt-1 space-y-1">
+            {hoverRows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 truncate">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: row.color }} />
+                  {row.label}
+                </span>
+                <span className="text-cyan-200">{valueFormatter ? valueFormatter(row.value) : row.value}</span>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
   );
 }
-

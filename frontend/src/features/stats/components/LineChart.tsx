@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type LinePoint = {
   label: string;
@@ -45,6 +45,10 @@ function buildXTicks(points: LinePoint[]): XTick[] {
   }));
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function LineChart({
   points,
   valueFormatter,
@@ -53,6 +57,7 @@ export function LineChart({
   xAxisTitle,
 }: LineChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const chartRef = useRef<HTMLDivElement | null>(null);
 
   const stats = useMemo(() => {
     if (points.length === 0) {
@@ -101,6 +106,21 @@ export function LineChart({
 
   const xTicks = useMemo(() => buildXTicks(points), [points]);
 
+  const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!chartRef.current || stats.normalized.length === 0) return;
+    const rect = chartRef.current.getBoundingClientRect();
+    const x = clamp(event.clientX - rect.left, 0, rect.width);
+    const idx =
+      stats.normalized.length === 1
+        ? 0
+        : clamp(Math.round((x / rect.width) * (stats.normalized.length - 1)), 0, stats.normalized.length - 1);
+    setHoverIndex(idx);
+  };
+
+  const onMouseLeave = () => {
+    setHoverIndex(null);
+  };
+
   return (
     <div className="relative">
       {yAxisTitle ? <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-fg-muted">{yAxisTitle}</p> : null}
@@ -114,36 +134,38 @@ export function LineChart({
           ))}
         </div>
 
-        <svg viewBox="0 0 100 100" className="h-48 w-full overflow-visible" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="areaGradient" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
-              <stop offset="100%" stopColor="rgba(56,189,248,0.02)" />
-            </linearGradient>
-          </defs>
+        <div ref={chartRef} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
+          <svg viewBox="0 0 100 100" className="h-48 w-full overflow-visible" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="areaGradient" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
+                <stop offset="100%" stopColor="rgba(56,189,248,0.02)" />
+              </linearGradient>
+            </defs>
 
-          <g className="stroke-white/15" strokeWidth="0.4">
-            <line x1="0" y1="20" x2="100" y2="20" />
-            <line x1="0" y1="40" x2="100" y2="40" />
-            <line x1="0" y1="60" x2="100" y2="60" />
-            <line x1="0" y1="80" x2="100" y2="80" />
-          </g>
+            <g className="stroke-white/15" strokeWidth="0.4">
+              <line x1="0" y1="20" x2="100" y2="20" />
+              <line x1="0" y1="40" x2="100" y2="40" />
+              <line x1="0" y1="60" x2="100" y2="60" />
+              <line x1="0" y1="80" x2="100" y2="80" />
+            </g>
 
-          {path ? <path d={`${path} L100,100 L0,100 Z`} fill="url(#areaGradient)" /> : null}
-          {path ? <path d={path} className={`${lineColorClass} fill-none`} strokeWidth="0.8" /> : null}
+            {hoverPoint ? <line x1={hoverPoint.x} y1="0" x2={hoverPoint.x} y2="100" className="stroke-cyan-200/70" strokeWidth="0.5" /> : null}
 
-          {stats.normalized.map((point, index) => (
-            <circle
-              key={`${point.label}-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r={hoverIndex === index ? 1.0 : 0.65}
-              className="fill-cyan-200 transition"
-              onMouseEnter={() => setHoverIndex(index)}
-              onMouseLeave={() => setHoverIndex(null)}
-            />
-          ))}
-        </svg>
+            {path ? <path d={`${path} L100,100 L0,100 Z`} fill="url(#areaGradient)" /> : null}
+            {path ? <path d={path} className={`${lineColorClass} fill-none`} strokeWidth="0.8" /> : null}
+
+            {stats.normalized.map((point, index) => (
+              <circle
+                key={`${point.label}-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r={hoverIndex === index ? 1.0 : 0.65}
+                className="fill-cyan-200 transition"
+              />
+            ))}
+          </svg>
+        </div>
       </div>
 
       <div className="mt-2 grid grid-cols-[68px_1fr] gap-2">
@@ -173,4 +195,3 @@ export function LineChart({
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type BarPoint = {
   label: string;
@@ -24,6 +24,10 @@ function buildTickSet(total: number, maxTicks: number): Set<number> {
   return new Set(values);
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function VerticalBarChart({
   points,
   valueFormatter,
@@ -33,6 +37,7 @@ export function VerticalBarChart({
   maxXTicks = 12,
 }: VerticalBarChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
 
   const safePoints = useMemo(
     () => points.map((p) => ({ label: p.label, value: Number.isFinite(p.value) ? p.value : 0 })),
@@ -43,9 +48,22 @@ export function VerticalBarChart({
   const yTicks = [max, max * 0.66, max * 0.33, 0];
   const tickSet = useMemo(() => buildTickSet(safePoints.length, maxXTicks), [safePoints.length, maxXTicks]);
   const hover = hoveredIndex != null ? safePoints[hoveredIndex] : null;
-  const hoverLeft = hoveredIndex != null && safePoints.length > 0
-    ? `${((hoveredIndex + 0.5) / safePoints.length) * 100}%`
-    : "50%";
+  const hoverLeft =
+    hoveredIndex != null && safePoints.length > 0
+      ? `${((hoveredIndex + 0.5) / safePoints.length) * 100}%`
+      : "50%";
+
+  const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!plotRef.current || safePoints.length === 0) return;
+    const rect = plotRef.current.getBoundingClientRect();
+    const x = clamp(event.clientX - rect.left, 0, rect.width);
+    const idx = clamp(Math.floor((x / rect.width) * safePoints.length), 0, safePoints.length - 1);
+    setHoveredIndex(idx);
+  };
+
+  const onMouseLeave = () => {
+    setHoveredIndex(null);
+  };
 
   return (
     <div className="space-y-2">
@@ -60,12 +78,21 @@ export function VerticalBarChart({
           ))}
         </div>
 
-        <div className="relative h-52 overflow-hidden rounded-xl border border-white/10 bg-panel/40">
+        <div
+          ref={plotRef}
+          className="relative h-52 overflow-hidden rounded-xl border border-white/10 bg-panel/40"
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
+        >
           <div className="absolute inset-0">
             {[20, 40, 60, 80].map((line) => (
               <div key={line} className="absolute left-0 right-0 border-t border-white/10" style={{ top: `${line}%` }} />
             ))}
           </div>
+
+          {hover ? (
+            <div className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-cyan-200/60" style={{ left: hoverLeft }} />
+          ) : null}
 
           <div className="absolute bottom-0 left-0 right-0 grid h-full grid-flow-col auto-cols-fr gap-1 px-2 pb-1">
             {safePoints.map((point, index) => {
@@ -80,8 +107,6 @@ export function VerticalBarChart({
                       backgroundColor: barColor,
                       opacity: hoveredIndex == null || hoveredIndex === index ? 1 : 0.65,
                     }}
-                    onMouseEnter={() => setHoveredIndex(index)}
-                    onMouseLeave={() => setHoveredIndex(null)}
                     title={`${point.label}: ${valueFormatter ? valueFormatter(point.value) : point.value}`}
                   />
                 </div>
