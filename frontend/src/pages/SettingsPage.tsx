@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiGet, apiPost, apiPut } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
+import { setStoredLanguage } from "@/shared/lib/i18n";
 import { ErrorState } from "@/shared/ui/states/ErrorState";
 import { LoadingState } from "@/shared/ui/states/LoadingState";
 import { ChangePasswordRequest } from "@/types/auth";
@@ -26,6 +27,7 @@ type SettingsFormState = {
   energyTariffWeekend: string;
   pollingFrequencySeconds: string;
   timezone: string;
+  uiLanguage: "es" | "en";
   mediaRootPaths: string;
   preferredPosterNames: string;
   userAliases: Record<string, string>;
@@ -60,6 +62,7 @@ function mapSettingsToForm(settings: StreamFuseSettings): SettingsFormState {
     energyTariffWeekend: String(settings.energy_tariff_weekend_eur_kwh),
     pollingFrequencySeconds: String(settings.polling_frequency_seconds),
     timezone: settings.timezone,
+    uiLanguage: settings.ui_language,
     mediaRootPaths: settings.media_root_paths.join("\n"),
     preferredPosterNames: settings.preferred_poster_names.join("\n"),
     userAliases: { ...settings.user_aliases },
@@ -235,6 +238,7 @@ export function SettingsPage() {
       energy_tariff_weekend_eur_kwh: Number(form.energyTariffWeekend),
       polling_frequency_seconds: Number(form.pollingFrequencySeconds),
       timezone: form.timezone.trim(),
+      ui_language: form.uiLanguage,
       media_root_paths: parseListFromTextarea(form.mediaRootPaths),
       preferred_poster_names: parseListFromTextarea(form.preferredPosterNames),
       user_aliases: form.userAliases,
@@ -253,6 +257,7 @@ export function SettingsPage() {
       setSaving(true);
       setError(null);
       const updated = await apiPut<StreamFuseSettings, StreamFuseSettingsUpdate>("/settings", payload);
+      setStoredLanguage(updated.ui_language);
       setSettings(updated);
       setForm(mapSettingsToForm(updated));
       await loadDetectedUsers();
@@ -467,6 +472,19 @@ export function SettingsPage() {
           </div>
 
           <div>
+            <label className={labelClass} htmlFor="ui-language">UI Language</label>
+            <select
+              id="ui-language"
+              className={selectClass}
+              value={form.uiLanguage}
+              onChange={(event) => setForm({ ...form, uiLanguage: (event.target.value === "en" ? "en" : "es") })}
+            >
+              <option value="es" style={selectOptionStyle}>Español</option>
+              <option value="en" style={selectOptionStyle}>English</option>
+            </select>
+          </div>
+
+          <div>
             <label className={labelClass} htmlFor="placeholder-path">Placeholder Path</label>
             <input id="placeholder-path" className={inputClass} value={form.placeholderPath} onChange={(event) => setForm({ ...form, placeholderPath: event.target.value })} />
           </div>
@@ -596,16 +614,4 @@ export function SettingsPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

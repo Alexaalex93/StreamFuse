@@ -146,13 +146,11 @@ function NetworkTrafficChart({
   const liveSeriesPeak = Math.max(1, ...inSeriesRaw, ...outSeriesRaw) * 1.06;
   const maxValue = Math.max(1, maxDisplayBps, liveSeriesPeak);
 
-  const inboundPath = buildSmoothPath(inSeries, maxValue);
   const outboundPath = buildSmoothPath(outSeries, maxValue);
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-5 text-xs">
-        <span className="text-red-400">Inbound {formatTrafficRate(inboundLegendBps)}</span>
         <span className="text-amber-400">Outbound {formatTrafficRate(outboundLegendBps)}</span>
       </div>
       <div className="relative">
@@ -167,14 +165,6 @@ function NetworkTrafficChart({
           <path
             d={outboundPath}
             className="fill-none stroke-amber-400"
-            strokeWidth="1"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d={inboundPath}
-            className="fill-none stroke-red-500"
             strokeWidth="1"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -494,7 +484,6 @@ export function DashboardPage() {
                 <StatCard label="CPU" value={formatPercent(systemMetrics.load.cpu_percent)} hint={systemMetrics.identity.cpu_model || "n/a"} />
                 <StatCard label="GPU" value={formatPercent(systemMetrics.load.gpu_percent)} hint={systemMetrics.identity.gpu_model || "n/a"} />
                 <StatCard label="RAM Used" value={formatBytes(systemMetrics.load.ram_used_bytes)} hint={`Free ${formatBytes(systemMetrics.load.ram_free_bytes)}`} />
-                <StatCard label="Inbound" value={formatBandwidth(Math.round(systemMetrics.network.inbound_bps ?? 0))} hint="Network in" />
                 <StatCard label="Outbound" value={formatBandwidth(Math.round(systemMetrics.network.outbound_bps ?? 0))} hint="Network out" />
                 <StatCard label="Power / Month" value={`${(systemMetrics.energy.power_watts ?? 0).toFixed(0)} W`} hint={formatMoney(systemMetrics.energy.estimated_month_cost_eur)} />
               </div>
@@ -598,6 +587,7 @@ export function DashboardPage() {
     </>
   );
 }
+
 
 
 

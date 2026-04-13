@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StreamFuseSettingsResponse(BaseModel):
+    ui_language: str
     tautulli_url: str
     tautulli_api_key_set: bool
     tautulli_api_key_masked: str | None
@@ -48,6 +49,7 @@ class DetectedUserAliasOption(BaseModel):
 class StreamFuseSettingsUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
+    ui_language: str | None = None
     tautulli_url: str | None = None
     tautulli_api_key: str | None = Field(default=None, description="Only send when updating secret")
 
@@ -76,6 +78,16 @@ class StreamFuseSettingsUpdate(BaseModel):
     user_aliases: dict[str, str] | None = None
     placeholder_path: str | None = None
     history_retention_days: int | None = None
+
+    @field_validator("ui_language")
+    @classmethod
+    def validate_ui_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"es", "en"}:
+            raise ValueError("ui_language must be 'es' or 'en'")
+        return normalized
 
     @field_validator("tautulli_url", "sftpgo_url")
     @classmethod

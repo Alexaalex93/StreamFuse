@@ -4,12 +4,14 @@ import { AppSection } from "@/app/App";
 import { StreamFuseLogo } from "@/shared/branding/StreamFuseLogo";
 import { apiGet } from "@/shared/api/client";
 import { cn } from "@/shared/lib/cn";
+import { t, UiLanguage } from "@/shared/lib/i18n";
 import { Button } from "@/shared/ui/button";
 
 type AppShellProps = {
   onLogout: () => void;
   currentSection: AppSection;
   onChangeSection: (section: AppSection) => void;
+  language: UiLanguage;
   children: ReactNode;
 };
 
@@ -29,21 +31,14 @@ type SourceHealthResponse = {
   updated_at: string;
 };
 
-const navItems: Array<{ id: AppSection; label: string; hint: string }> = [
-  { id: "dashboard", label: "Dashboard", hint: "Live control room" },
-  { id: "history", label: "History", hint: "Playback timeline" },
-  { id: "stats", label: "Stats", hint: "Analytics & trends" },
-  { id: "settings", label: "Settings", hint: "System config" },
-];
-
-function statusLabel(item: SourceHealthItem | null): string {
+function statusLabel(item: SourceHealthItem | null, language: UiLanguage): string {
   if (!item) {
-    return "checking";
+    return t(language, "source.checking");
   }
-  return item.connected ? "connected" : "disconnected";
+  return item.connected ? t(language, "source.connected") : t(language, "source.disconnected");
 }
 
-export function AppShell({ currentSection, onChangeSection, onLogout, children }: AppShellProps) {
+export function AppShell({ currentSection, onChangeSection, onLogout, language, children }: AppShellProps) {
   const [health, setHealth] = useState<SourceHealthResponse | null>(null);
 
   useEffect(() => {
@@ -73,6 +68,16 @@ export function AppShell({ currentSection, onChangeSection, onLogout, children }
     };
   }, []);
 
+  const navItems: Array<{ id: AppSection; label: string; hint: string }> = useMemo(
+    () => [
+      { id: "dashboard", label: t(language, "nav.dashboard"), hint: t(language, "nav.dashboardHint") },
+      { id: "history", label: t(language, "nav.history"), hint: t(language, "nav.historyHint") },
+      { id: "stats", label: t(language, "nav.stats"), hint: t(language, "nav.statsHint") },
+      { id: "settings", label: t(language, "nav.settings"), hint: t(language, "nav.settingsHint") },
+    ],
+    [language],
+  );
+
   const sourceRows = useMemo(
     () => [
       { key: "tautulli" as SourceKey, label: "Tautulli", item: health?.tautulli ?? null },
@@ -81,14 +86,6 @@ export function AppShell({ currentSection, onChangeSection, onLogout, children }
     ],
     [health],
   );
-
-  const onRefresh = () => {
-    window.dispatchEvent(new CustomEvent("streamfuse:refresh", { detail: { section: currentSection } }));
-  };
-
-  const onNewFilter = () => {
-    window.dispatchEvent(new CustomEvent("streamfuse:new-filter", { detail: { section: currentSection } }));
-  };
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-app-gradient text-fg">
@@ -125,7 +122,7 @@ export function AppShell({ currentSection, onChangeSection, onLogout, children }
           </nav>
 
           <div className="mt-8 rounded-xl border border-white/10 bg-card/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Source Health</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">{t(language, "source.health")}</p>
             <div className="mt-3 space-y-2 text-sm text-fg-muted">
               {sourceRows.map((row) => {
                 const connected = row.item?.connected === true;
@@ -139,7 +136,7 @@ export function AppShell({ currentSection, onChangeSection, onLogout, children }
                           connected ? "bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.2)]" : "bg-rose-400 shadow-[0_0_0_3px_rgba(251,113,133,0.2)]",
                         )}
                       />
-                      {statusLabel(row.item)}
+                      {statusLabel(row.item, language)}
                     </span>
                   </div>
                 );
@@ -152,13 +149,13 @@ export function AppShell({ currentSection, onChangeSection, onLogout, children }
           <header className="sticky top-0 z-20 h-[76px] border-b border-white/10 bg-topbar/70 px-4 backdrop-blur-xl md:px-8">
             <div className="flex h-full items-center justify-between gap-4">
               <div>
-                <h1 className="font-display text-xl font-semibold text-white">StreamFuse Console</h1>
-                <p className="text-xs text-fg-muted">Premium visibility for media sessions and transfer activity.</p>
+                <h1 className="font-display text-xl font-semibold text-white">{t(language, "header.title")}</h1>
+                <p className="text-xs text-fg-muted">{t(language, "header.subtitle")}</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button variant="ghost" onClick={onRefresh}>Refresh</Button>
-                <Button variant="default" onClick={onNewFilter}>New Filter</Button>
-                <Button variant="outline" onClick={onLogout}>Logout</Button>
+                <Button variant="ghost" disabled title={t(language, "header.disabled")}>{t(language, "header.refresh")}</Button>
+                <Button variant="default" disabled title={t(language, "header.disabled")}>{t(language, "header.newFilter")}</Button>
+                <Button variant="outline" onClick={onLogout}>{t(language, "header.logout")}</Button>
               </div>
             </div>
           </header>
@@ -169,8 +166,3 @@ export function AppShell({ currentSection, onChangeSection, onLogout, children }
     </div>
   );
 }
-
-
-
-
-

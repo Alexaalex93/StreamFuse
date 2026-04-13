@@ -1,4 +1,5 @@
 export type StreamFuseSettings = {
+  ui_language: "es" | "en";
   tautulli_url: string;
   tautulli_api_key_set: boolean;
   tautulli_api_key_masked: string | null;
@@ -28,6 +29,7 @@ export type StreamFuseSettings = {
 };
 
 export type StreamFuseSettingsUpdate = {
+  ui_language?: "es" | "en";
   tautulli_url?: string;
   tautulli_api_key?: string;
   sftpgo_url?: string;

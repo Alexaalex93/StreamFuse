@@ -11,6 +11,7 @@ DEFAULT_PREFERRED_POSTER_NAMES = ["poster.jpg", "cover.jpg", "folder.jpg", "movi
 
 
 class SettingsService:
+    KEY_UI_LANGUAGE = "ui_language"
     KEY_TAUTULLI_URL = "tautulli_url"
     KEY_TAUTULLI_API_KEY = "tautulli_api_key"
     KEY_SFTPGO_URL = "sftpgo_url"
@@ -39,6 +40,7 @@ class SettingsService:
     KEY_HISTORY_RETENTION_DAYS = "history_retention_days"
 
     SETTING_DESCRIPTIONS = {
+        KEY_UI_LANGUAGE: "UI language (es/en)",
         KEY_TAUTULLI_URL: "Tautulli base URL",
         KEY_TAUTULLI_API_KEY: "Tautulli API key (secret)",
         KEY_SFTPGO_URL: "SFTPGo base URL",
@@ -88,6 +90,7 @@ class SettingsService:
         )
 
         response = StreamFuseSettingsResponse(
+            ui_language=self._value_or_default(by_key, self.KEY_UI_LANGUAGE, "es"),
             tautulli_url=self._value_or_default(by_key, self.KEY_TAUTULLI_URL, self.app_settings.tautulli_base_url),
             tautulli_api_key_set=bool(tautulli_secret),
             tautulli_api_key_masked=self._mask_secret(tautulli_secret),
@@ -179,6 +182,8 @@ class SettingsService:
         return response
 
     def update_settings(self, payload: StreamFuseSettingsUpdate) -> StreamFuseSettingsResponse:
+        if payload.ui_language is not None:
+            self._set(self.KEY_UI_LANGUAGE, payload.ui_language)
         if payload.tautulli_url is not None:
             self._set(self.KEY_TAUTULLI_URL, payload.tautulli_url)
         if payload.sftpgo_url is not None:
@@ -325,6 +330,4 @@ class SettingsService:
         except Exception:
             return "UTC"
         return tz_name
-
-
 
