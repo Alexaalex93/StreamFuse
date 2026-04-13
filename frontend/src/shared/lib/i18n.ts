@@ -1,4 +1,4 @@
-export type UiLanguage = "es" | "en";
+ï»¿export type UiLanguage = "es" | "en";
 
 const STORAGE_KEY = "streamfuse.ui_language";
 
@@ -27,16 +27,16 @@ const translations: Record<UiLanguage, Record<TranslationKey, string>> = {
     "nav.dashboard": "Dashboard",
     "nav.dashboardHint": "Control en directo",
     "nav.history": "Historial",
-    "nav.historyHint": "Timeline de reproducción",
-    "nav.stats": "Estadísticas",
-    "nav.statsHint": "Analítica y tendencias",
+    "nav.historyHint": "Timeline de reproducciÃ³n",
+    "nav.stats": "EstadÃ­sticas",
+    "nav.statsHint": "AnalÃ­tica y tendencias",
     "nav.settings": "Ajustes",
-    "nav.settingsHint": "Configuración del sistema",
+    "nav.settingsHint": "ConfiguraciÃ³n del sistema",
     "header.title": "StreamFuse Console",
     "header.subtitle": "Visibilidad premium de sesiones multimedia y transferencias.",
-    "header.refresh": "Refresh",
-    "header.newFilter": "New Filter",
-    "header.logout": "Cerrar sesión",
+    "header.refresh": "Actualizar",
+    "header.newFilter": "Nuevo filtro",
+    "header.logout": "Cerrar sesiÃ³n",
     "header.disabled": "Desactivado temporalmente",
     "source.health": "Estado de fuentes",
     "source.connected": "conectado",
@@ -54,8 +54,8 @@ const translations: Record<UiLanguage, Record<TranslationKey, string>> = {
     "nav.settingsHint": "System config",
     "header.title": "StreamFuse Console",
     "header.subtitle": "Premium visibility for media sessions and transfer activity.",
-    "header.refresh": "Refresh",
-    "header.newFilter": "New Filter",
+    "header.refresh": "Actualizar",
+    "header.newFilter": "Nuevo filtro",
     "header.logout": "Logout",
     "header.disabled": "Temporarily disabled",
     "source.health": "Source Health",
@@ -87,3 +87,4 @@ export function setStoredLanguage(language: UiLanguage): void {
 export function t(language: UiLanguage, key: TranslationKey): string {
   return translations[language][key] ?? translations.es[key] ?? key;
 }
+

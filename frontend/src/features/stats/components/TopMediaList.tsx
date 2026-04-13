@@ -1,10 +1,11 @@
-﻿import { TopMediaItem } from "@/types/stats";
+import { TopMediaItem } from "@/types/stats";
 
 type TopMediaListProps = {
   items: TopMediaItem[];
+  usersLabel?: string;
 };
 
-export function TopMediaList({ items }: TopMediaListProps) {
+export function TopMediaList({ items, usersLabel = "users" }: TopMediaListProps) {
   return (
     <div className="space-y-3">
       {items.map((item, index) => {
@@ -27,7 +28,7 @@ export function TopMediaList({ items }: TopMediaListProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm text-fg" title={item.title}>{item.title}</p>
-              <p className="text-xs text-fg-muted">{item.unique_users} usuarios</p>
+              <p className="text-xs text-fg-muted">{item.unique_users} {usersLabel}</p>
             </div>
           </article>
         );
