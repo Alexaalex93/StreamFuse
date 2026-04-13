@@ -125,7 +125,7 @@ export function MultiLineChart({
 
           {normalized.series.map((s) => {
             const d = s.points.map((p, idx) => `${idx === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
-            return <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth="1.2" />;
+            return <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth="0.42" />;
           })}
 
           {normalized.series.map((s) =>
@@ -134,7 +134,7 @@ export function MultiLineChart({
                 key={`${s.label}-${idx}`}
                 cx={p.x}
                 cy={p.y}
-                r={0.9}
+                r={0.32}
                 fill={s.color}
                 onMouseEnter={() => setHover({ series: s.label, point: { label: p.label, value: p.value } })}
                 onMouseLeave={() => setHover(null)}
@@ -171,3 +171,4 @@ export function MultiLineChart({
     </div>
   );
 }
+

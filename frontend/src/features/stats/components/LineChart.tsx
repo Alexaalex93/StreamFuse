@@ -130,14 +130,14 @@ export function LineChart({
           </g>
 
           {path ? <path d={`${path} L100,100 L0,100 Z`} fill="url(#areaGradient)" /> : null}
-          {path ? <path d={path} className={`${lineColorClass} fill-none`} strokeWidth="1.5" /> : null}
+          {path ? <path d={path} className={`${lineColorClass} fill-none`} strokeWidth="0.8" /> : null}
 
           {stats.normalized.map((point, index) => (
             <circle
               key={`${point.label}-${index}`}
               cx={point.x}
               cy={point.y}
-              r={hoverIndex === index ? 1.5 : 1}
+              r={hoverIndex === index ? 1.0 : 0.65}
               className="fill-cyan-200 transition"
               onMouseEnter={() => setHoverIndex(index)}
               onMouseLeave={() => setHoverIndex(null)}
@@ -173,3 +173,4 @@ export function LineChart({
     </div>
   );
 }
+
