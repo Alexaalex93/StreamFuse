@@ -28,6 +28,16 @@ class HourSessionsPoint(BaseModel):
     sessions: int
 
 
+class DailySharedPoint(BaseModel):
+    day: str
+    shared_bytes: int
+
+
+class HourSharedPoint(BaseModel):
+    hour: int
+    shared_bytes: int
+
+
 class OverviewStatsResponse(BaseModel):
     total_sessions: int
     active_sessions: int
@@ -49,6 +59,11 @@ class OverviewStatsResponse(BaseModel):
     play_count_by_hour: list[HourSessionsPoint]
     play_count_by_platform: list[LabeledSessionsPoint]
     play_count_by_media_type: list[LabeledSessionsPoint]
+    shared_by_day: list[DailySharedPoint]
+    shared_by_week: list[DailySharedPoint]
+    shared_by_month: list[DailySharedPoint]
+    shared_by_year: list[DailySharedPoint]
+    shared_by_hour: list[HourSharedPoint]
 
 
 class TopUserStat(BaseModel):
@@ -114,11 +129,3 @@ class UserInsightsResponse(BaseModel):
     peak_hours: list[PeakHourPoint]
     timezone: str
     play_count_rule: str
-
-
-
-
-
-
-
-

@@ -11,6 +11,7 @@ export function TopMediaList({ items }: TopMediaListProps) {
         const posterSrc = item.sample_session_id ? `/api/v1/posters/${item.sample_session_id}?variant=poster` : "";
         return (
           <article key={`${item.title}-${index}`} className="flex items-center gap-3 rounded-xl border border-white/10 bg-panel/30 p-2">
+            <div className="w-6 flex-none text-center text-sm font-semibold text-fg-muted">{index + 1}</div>
             <div className="h-14 w-10 flex-none overflow-hidden rounded-md border border-white/10 bg-black/30">
               {posterSrc ? (
                 <img

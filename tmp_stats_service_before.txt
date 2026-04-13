@@ -136,34 +136,7 @@ class StatsService:
                 UnifiedStreamSessionModel.duration_ms,
             ).where(*self._where(filters))
         ).all()
-        total_shared_bytes = 0
-        shared_by_day: dict[str, int] = {}
-        shared_by_week: dict[str, int] = {}
-        shared_by_month: dict[str, int] = {}
-        shared_by_year: dict[str, int] = {}
-        shared_by_hour: dict[int, int] = {hour: 0 for hour in range(24)}
-
-        for row in shared_rows:
-            shared_bytes = self._extract_shared_bytes(row)
-            if shared_bytes <= 0:
-                continue
-
-            total_shared_bytes += shared_bytes
-
-            local_dt = self._to_local_datetime(row.started_at)
-            if local_dt is None:
-                continue
-
-            day_key = local_dt.strftime("%Y-%m-%d")
-            week_key = self._week_key(local_dt)
-            month_key = local_dt.strftime("%Y-%m")
-            year_key = local_dt.strftime("%Y")
-
-            shared_by_day[day_key] = shared_by_day.get(day_key, 0) + shared_bytes
-            shared_by_week[week_key] = shared_by_week.get(week_key, 0) + shared_bytes
-            shared_by_month[month_key] = shared_by_month.get(month_key, 0) + shared_bytes
-            shared_by_year[year_key] = shared_by_year.get(year_key, 0) + shared_bytes
-            shared_by_hour[local_dt.hour] = shared_by_hour.get(local_dt.hour, 0) + shared_bytes
+        total_shared_bytes = sum(self._extract_shared_bytes(row) for row in shared_rows)
 
         unraid_metrics = UnraidMetricsService(self.db, self._settings()).get_metrics()
         if unraid_metrics.enabled and unraid_metrics.source_available:
@@ -251,26 +224,6 @@ class StatsService:
                 {"label": "movie", "sessions": int(media_type_counts.get("movie", 0))},
                 {"label": "series", "sessions": int(media_type_counts.get("series", 0))},
                 {"label": "other", "sessions": int(media_type_counts.get("other", 0))},
-            ],
-            "shared_by_day": [
-                {"day": key, "shared_bytes": int(shared_by_day[key])}
-                for key in sorted(shared_by_day.keys())
-            ],
-            "shared_by_week": [
-                {"day": key, "shared_bytes": int(shared_by_week[key])}
-                for key in sorted(shared_by_week.keys())
-            ],
-            "shared_by_month": [
-                {"day": key, "shared_bytes": int(shared_by_month[key])}
-                for key in sorted(shared_by_month.keys())
-            ],
-            "shared_by_year": [
-                {"day": key, "shared_bytes": int(shared_by_year[key])}
-                for key in sorted(shared_by_year.keys())
-            ],
-            "shared_by_hour": [
-                {"hour": hour, "shared_bytes": int(shared_by_hour.get(hour, 0))}
-                for hour in range(24)
             ],
         }
 
@@ -816,6 +769,7 @@ def _format_bytes(size_bytes: int) -> str:
     if idx == 0:
         return f"{int(value)} {units[idx]}"
     return f"{value:.1f} {units[idx]}"
+
 
 
 

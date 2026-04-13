@@ -1,4 +1,4 @@
-﻿export type DailyPoint = {
+export type DailyPoint = {
   day: string;
   sessions?: number;
   avg_bandwidth_bps?: number;
@@ -30,6 +30,11 @@ export type OverviewStats = {
   play_count_by_hour: Array<{ hour: number; sessions: number }>;
   play_count_by_platform: Array<{ label: string; sessions: number }>;
   play_count_by_media_type: Array<{ label: string; sessions: number }>;
+  shared_by_day: Array<{ day: string; shared_bytes: number }>;
+  shared_by_week: Array<{ day: string; shared_bytes: number }>;
+  shared_by_month: Array<{ day: string; shared_bytes: number }>;
+  shared_by_year: Array<{ day: string; shared_bytes: number }>;
+  shared_by_hour: Array<{ hour: number; shared_bytes: number }>;
 };
 
 export type TopUser = {
