@@ -151,7 +151,8 @@ function NetworkTrafficChart({
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-5 text-xs">
-        <span className="text-amber-400">Outbound {formatTrafficRate(outboundLegendBps)}</span>
+        <span className="text-amber-400">↑ Outbound {formatTrafficRate(outboundLegendBps)}</span>
+        {inboundLegendBps > 0 ? <span className="text-cyan-400">↓ Inbound {formatTrafficRate(inboundLegendBps)}</span> : null}
       </div>
       <div className="relative">
         <span className="absolute right-0 top-0 text-[11px] text-fg-muted">{formatTrafficRate(maxLabelBps)}</span>
@@ -162,6 +163,17 @@ function NetworkTrafficChart({
             <line x1="0" y1="60" x2="100" y2="60" />
             <line x1="0" y1="80" x2="100" y2="80" />
           </g>
+          {inboundPoints.length >= 2 ? (
+            <path
+              d={buildSmoothPath(smoothSeries(inboundPoints.length === len ? inboundPoints : [...Array(len - inboundPoints.length).fill(0), ...inboundPoints]), maxValue)}
+              className="fill-none stroke-cyan-400"
+              strokeWidth="0.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="2 1.5"
+              vectorEffect="non-scaling-stroke"
+            />
+          ) : null}
           <path
             d={outboundPath}
             className="fill-none stroke-amber-400"

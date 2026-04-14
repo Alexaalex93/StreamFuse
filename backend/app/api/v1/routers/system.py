@@ -17,6 +17,7 @@ from app.persistence.repositories.unified_stream_session_repository import (
     SessionQueryFilters,
     UnifiedStreamSessionRepository,
 )
+from app.services.nic_rate_monitor import get_nic_rates
 from app.services.stats_service import StatsService
 from app.services.unraid_metrics_service import UnraidMetricsService, format_bps, format_bytes
 
@@ -31,11 +32,20 @@ def get_system_metrics(
     service = UnraidMetricsService(db, app_settings)
     data = service.get_metrics()
 
-    # Media-only live bandwidth (StreamFuse active sessions), excludes other apps traffic.
+    # Real NIC traffic (bytes delta / elapsed seconds via psutil).
+    # First call returns (0.0, 0.0) while the baseline is established;
+    # fall back to Unraid JSON values if available, then to 0.
+    nic_out_bps, nic_in_bps = get_nic_rates()
+    if nic_out_bps == 0.0 and data.outbound_bps:
+        nic_out_bps = data.outbound_bps
+    if nic_in_bps == 0.0 and data.inbound_bps:
+        nic_in_bps = data.inbound_bps
+
+    # Media-only bandwidth — sum of active StreamFuse session estimates.
+    # Kept separately for the transfer block (excludes unrelated host traffic).
     session_repo = UnifiedStreamSessionRepository(db)
     active_rows = session_repo.list_active(SessionQueryFilters(limit=1000))
     media_outbound_bps = float(sum(row.bandwidth_bps or 0 for row in active_rows))
-    media_inbound_bps = 0.0
 
     # Total shared strictly from StreamFuse session history (Samba + SFTPGo + Tautulli/Plex).
     shared_rows = db.execute(
@@ -74,8 +84,8 @@ def get_system_metrics(
             ram_free_bytes=data.ram_free_bytes,
         ),
         network=SystemNetwork(
-            inbound_bps=media_inbound_bps,
-            outbound_bps=media_outbound_bps,
+            inbound_bps=nic_in_bps,
+            outbound_bps=nic_out_bps,
         ),
         energy=SystemEnergy(
             power_watts=data.power_watts,

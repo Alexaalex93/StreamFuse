@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MediaStatsResponse, OverviewStats, UsersStatsResponse } from "@/types/stats";
 
@@ -34,22 +34,12 @@ type DrillChartKey =
   | "shared_hour"
   | "peak_hours";
 
+type SessionPeriod = "day" | "week" | "month" | "year";
+type BandwidthPeriod = "day" | "week" | "month" | "year";
+type SharedPeriod = "day" | "week" | "month" | "year" | "hour";
+
 type SeriesPoint = { label: string; value: number };
 type DrillSeries = { userName: string; color: string; points: SeriesPoint[] };
-
-type ChartKind = "sessions" | "bandwidth" | "shared";
-type ChartType = "bar" | "area";
-
-type FullWidthChart = {
-  key: DrillChartKey;
-  kind: ChartKind;
-  chartType: ChartType;
-  title: string;
-  subtitle: string;
-  points: SeriesPoint[];
-  yAxis: string;
-  xAxis: string;
-};
 
 const DRILL_USER_COLORS = ["#22d3ee", "#f97316", "#a78bfa", "#34d399", "#f43f5e", "#eab308", "#60a5fa", "#fb7185"];
 
@@ -86,33 +76,34 @@ const TEXT = {
     xYear: "AÑO",
     xHour: "HORA",
 
-    sessionsByDay: "Sesiones por día",
+    sectionDistributions: "Distribuciones",
+    sectionUsersContent: "Usuarios y contenido",
+    sectionTrends: "Tendencias",
+
+    periodDay: "Diario",
+    periodWeek: "Semanal",
+    periodMonth: "Mensual",
+    periodYear: "Anual",
+    period24h: "24 h",
+
+    trendSessions: "Sesiones",
+    trendBandwidth: "Ancho de banda",
+    trendShared: "Contenido compartido",
+
     sessionsByDaySub: "Últimos 7 días. Eje X: día de la semana. Eje Y: número de sesiones.",
-    sessionsByWeek: "Sesiones por semana",
     sessionsByWeekSub: "Últimas 4 semanas ISO. Eje X: semana. Eje Y: número de sesiones.",
-    sessionsByMonth: "Sesiones por mes",
     sessionsByMonthSub: "Últimos 12 meses. Eje X: mes. Eje Y: número de sesiones.",
-    sessionsByYear: "Sesiones por año",
     sessionsByYearSub: "Histórico completo. Eje X: año. Eje Y: número de sesiones.",
 
-    bandwidthByDay: "Ancho de banda por día",
     bandwidthByDaySub: "Promedio por sesión en los últimos 7 días.",
-    bandwidthByWeek: "Ancho de banda por semana",
     bandwidthByWeekSub: "Promedio por sesión en las últimas 4 semanas ISO.",
-    bandwidthByMonth: "Ancho de banda por mes",
     bandwidthByMonthSub: "Promedio por sesión en los últimos 12 meses.",
-    bandwidthByYear: "Ancho de banda por año",
     bandwidthByYearSub: "Promedio por sesión por año en todo el histórico.",
 
-    sharedByDay: "Contenido compartido por día",
     sharedByDaySub: "Total compartido por día (últimos 7 días).",
-    sharedByWeek: "Contenido compartido por semana",
     sharedByWeekSub: "Total compartido por semana (últimas 4 semanas ISO).",
-    sharedByMonth: "Contenido compartido por mes",
     sharedByMonthSub: "Total compartido por mes (últimos 12 meses).",
-    sharedByYear: "Contenido compartido por año",
     sharedByYearSub: "Total compartido por año (histórico completo).",
-    sharedByHour: "Contenido compartido por hora",
     sharedByHourSub: "Últimas 24 horas. Eje X: hora local. Eje Y: bytes compartidos.",
 
     peakHours: "Horas punta de visualización",
@@ -124,11 +115,11 @@ const TEXT = {
     topUsersSub: "Usuarios más activos por número de sesiones.",
     topUsersBw: "Usuarios por ancho de banda",
     topUsersBwSub: "Usuarios con mayor ancho de banda promedio por sesión.",
-    playByWeekday: "Reproducciones por día de la semana",
+    playByWeekday: "Reproducciones por día",
     playByWeekdaySub: "Sesiones agregadas por día de la semana.",
-    playByMedia: "Reproducciones por tipo de medio",
+    playByMedia: "Tipo de medio",
     playByMediaSub: "Comparativa entre series y películas.",
-    playByPlatform: "Reproducciones por plataforma",
+    playByPlatform: "Plataformas",
     playByPlatformSub: "Top plataformas por número de sesiones.",
 
     topMovies: "Top películas",
@@ -146,7 +137,6 @@ const TEXT = {
     noDrillTitle: "Sin datos por usuario",
     noDrillDesc: "No hay datos comparables para esta gráfica.",
 
-    drillLegend: "Leyenda",
     lastSeen: "Última actividad",
     now: "ahora",
   },
@@ -182,33 +172,34 @@ const TEXT = {
     xYear: "YEAR",
     xHour: "HOUR",
 
-    sessionsByDay: "Sessions by Day",
+    sectionDistributions: "Distributions",
+    sectionUsersContent: "Users & Content",
+    sectionTrends: "Trends",
+
+    periodDay: "Daily",
+    periodWeek: "Weekly",
+    periodMonth: "Monthly",
+    periodYear: "Yearly",
+    period24h: "24 h",
+
+    trendSessions: "Sessions",
+    trendBandwidth: "Bandwidth",
+    trendShared: "Shared Content",
+
     sessionsByDaySub: "Last 7 days. X-axis: weekday. Y-axis: session count.",
-    sessionsByWeek: "Sessions by Week",
     sessionsByWeekSub: "Last 4 ISO weeks. X-axis: week. Y-axis: session count.",
-    sessionsByMonth: "Sessions by Month",
     sessionsByMonthSub: "Last 12 months. X-axis: month. Y-axis: session count.",
-    sessionsByYear: "Sessions by Year",
     sessionsByYearSub: "Full history. X-axis: year. Y-axis: session count.",
 
-    bandwidthByDay: "Bandwidth by Day",
     bandwidthByDaySub: "Average per session over the last 7 days.",
-    bandwidthByWeek: "Bandwidth by Week",
     bandwidthByWeekSub: "Average per session over the last 4 ISO weeks.",
-    bandwidthByMonth: "Bandwidth by Month",
     bandwidthByMonthSub: "Average per session over the last 12 months.",
-    bandwidthByYear: "Bandwidth by Year",
     bandwidthByYearSub: "Average per session by year over full history.",
 
-    sharedByDay: "Shared Content by Day",
     sharedByDaySub: "Total shared per day (last 7 days).",
-    sharedByWeek: "Shared Content by Week",
     sharedByWeekSub: "Total shared per week (last 4 ISO weeks).",
-    sharedByMonth: "Shared Content by Month",
     sharedByMonthSub: "Total shared per month (last 12 months).",
-    sharedByYear: "Shared Content by Year",
     sharedByYearSub: "Total shared per year (full history).",
-    sharedByHour: "Shared Content by Hour",
     sharedByHourSub: "Last 24 hours. X-axis: local hour. Y-axis: shared bytes.",
 
     peakHours: "Peak Viewing Hours",
@@ -220,11 +211,11 @@ const TEXT = {
     topUsersSub: "Most active users by session count.",
     topUsersBw: "Users by Bandwidth",
     topUsersBwSub: "Users with highest average bandwidth per session.",
-    playByWeekday: "Play Count by Weekday",
+    playByWeekday: "Plays by Weekday",
     playByWeekdaySub: "Aggregated sessions by weekday.",
-    playByMedia: "Play Count by Media Type",
+    playByMedia: "Media Type",
     playByMediaSub: "Comparison between series and movies.",
-    playByPlatform: "Play Count by Platform",
+    playByPlatform: "Platforms",
     playByPlatformSub: "Top platforms by session count.",
 
     topMovies: "Top Movies",
@@ -242,7 +233,6 @@ const TEXT = {
     noDrillTitle: "No per-user data",
     noDrillDesc: "No comparable data for this chart.",
 
-    drillLegend: "Legend",
     lastSeen: "Last seen",
     now: "now",
   },
@@ -288,15 +278,12 @@ function isoWeekLabel(key: string, locale: string): string {
   if (!match) return key;
   const year = Number(match[1]);
   const week = Number(match[2]);
-
   const jan4 = new Date(Date.UTC(year, 0, 4));
   const jan4Day = jan4.getUTCDay() || 7;
   const week1Monday = new Date(jan4);
   week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1);
-
   const targetMonday = new Date(week1Monday);
   targetMonday.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
-
   const month = targetMonday.toLocaleDateString(locale, { month: "short" });
   return `W${week} ${month} ${year}`;
 }
@@ -362,41 +349,33 @@ function buildSharedHours(rows: Array<{ hour: number; shared_bytes: number }>): 
 
 function pointsByKey(key: DrillChartKey, overview: OverviewStats, now: Date, locale: string): SeriesPoint[] {
   switch (key) {
-    case "sessions_day":
-      return buildByDay(overview.sessions_by_day, now, locale, (row) => row.sessions);
-    case "sessions_week":
-      return buildByWeek(overview.sessions_by_week, now, locale, (row) => row.sessions);
-    case "sessions_month":
-      return buildByMonth(overview.sessions_by_month, now, locale, (row) => row.sessions);
-    case "sessions_year":
-      return buildByYear(overview.sessions_by_year, now, (row) => row.sessions);
-
-    case "bandwidth_day":
-      return buildByDay(overview.bandwidth_by_day, now, locale, (row) => row.avg_bandwidth_bps);
-    case "bandwidth_week":
-      return buildByWeek(overview.bandwidth_by_week, now, locale, (row) => row.avg_bandwidth_bps);
-    case "bandwidth_month":
-      return buildByMonth(overview.bandwidth_by_month, now, locale, (row) => row.avg_bandwidth_bps);
-    case "bandwidth_year":
-      return buildByYear(overview.bandwidth_by_year, now, (row) => row.avg_bandwidth_bps);
-
-    case "shared_day":
-      return buildByDay(overview.shared_by_day, now, locale, (row) => row.shared_bytes);
-    case "shared_week":
-      return buildByWeek(overview.shared_by_week, now, locale, (row) => row.shared_bytes);
-    case "shared_month":
-      return buildByMonth(overview.shared_by_month, now, locale, (row) => row.shared_bytes);
-    case "shared_year":
-      return buildByYear(overview.shared_by_year, now, (row) => row.shared_bytes);
-    case "shared_hour":
-      return buildSharedHours(overview.shared_by_hour);
-
-    case "peak_hours":
-      return buildHours(overview.play_count_by_hour);
-
-    default:
-      return [];
+    case "sessions_day":   return buildByDay(overview.sessions_by_day, now, locale, (r) => r.sessions);
+    case "sessions_week":  return buildByWeek(overview.sessions_by_week, now, locale, (r) => r.sessions);
+    case "sessions_month": return buildByMonth(overview.sessions_by_month, now, locale, (r) => r.sessions);
+    case "sessions_year":  return buildByYear(overview.sessions_by_year, now, (r) => r.sessions);
+    case "bandwidth_day":   return buildByDay(overview.bandwidth_by_day, now, locale, (r) => r.avg_bandwidth_bps);
+    case "bandwidth_week":  return buildByWeek(overview.bandwidth_by_week, now, locale, (r) => r.avg_bandwidth_bps);
+    case "bandwidth_month": return buildByMonth(overview.bandwidth_by_month, now, locale, (r) => r.avg_bandwidth_bps);
+    case "bandwidth_year":  return buildByYear(overview.bandwidth_by_year, now, (r) => r.avg_bandwidth_bps);
+    case "shared_day":   return buildByDay(overview.shared_by_day, now, locale, (r) => r.shared_bytes);
+    case "shared_week":  return buildByWeek(overview.shared_by_week, now, locale, (r) => r.shared_bytes);
+    case "shared_month": return buildByMonth(overview.shared_by_month, now, locale, (r) => r.shared_bytes);
+    case "shared_year":  return buildByYear(overview.shared_by_year, now, (r) => r.shared_bytes);
+    case "shared_hour":  return buildSharedHours(overview.shared_by_hour);
+    case "peak_hours":   return buildHours(overview.play_count_by_hour);
+    default: return [];
   }
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-muted">
+        {label}
+      </span>
+      <div className="flex-1 border-t border-white/10" />
+    </div>
+  );
 }
 
 export function StatsPage() {
@@ -410,6 +389,10 @@ export function StatsPage() {
   const [selectedChart, setSelectedChart] = useState<DrillChartKey | null>(null);
   const [drillSeries, setDrillSeries] = useState<DrillSeries[] | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
+
+  const [sessionsPeriod, setSessionsPeriod] = useState<SessionPeriod>("week");
+  const [bandwidthPeriod, setBandwidthPeriod] = useState<BandwidthPeriod>("week");
+  const [sharedPeriod, setSharedPeriod] = useState<SharedPeriod>("week");
 
   const t = TEXT[language];
   const locale = language === "en" ? "en-US" : "es-ES";
@@ -442,29 +425,34 @@ export function StatsPage() {
     }
   };
 
-  useEffect(() => {
-    void loadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { void loadStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const onRefresh = () => {
-      void loadStats();
-    };
+    const onRefresh = () => { void loadStats(); };
     window.addEventListener("streamfuse:refresh", onRefresh);
     return () => window.removeEventListener("streamfuse:refresh", onRefresh);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+  }, [language]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSessionsPeriod = (p: SessionPeriod) => {
+    setSessionsPeriod(p);
+    if (selectedChart?.startsWith("sessions_")) setSelectedChart(`sessions_${p}` as DrillChartKey);
+  };
+
+  const handleBandwidthPeriod = (p: BandwidthPeriod) => {
+    setBandwidthPeriod(p);
+    if (selectedChart?.startsWith("bandwidth_")) setSelectedChart(`bandwidth_${p}` as DrillChartKey);
+  };
+
+  const handleSharedPeriod = (p: SharedPeriod) => {
+    setSharedPeriod(p);
+    if (selectedChart?.startsWith("shared_")) setSelectedChart(`shared_${p}` as DrillChartKey);
+  };
 
   const drillUsers = useMemo(() => users?.items.map((item) => item.user_name).slice(0, 6) ?? [], [users]);
 
   useEffect(() => {
     const run = async () => {
-      if (!selectedChart || drillUsers.length === 0) {
-        setDrillSeries(null);
-        return;
-      }
-
+      if (!selectedChart || drillUsers.length === 0) { setDrillSeries(null); return; }
       try {
         setDrillLoading(true);
         const now = new Date();
@@ -472,11 +460,7 @@ export function StatsPage() {
           drillUsers.map(async (userName, index) => {
             const query = `?user_name=${encodeURIComponent(userName)}`;
             const data = await apiGet<OverviewStats>(`/stats/overview${query}`);
-            return {
-              userName,
-              color: DRILL_USER_COLORS[index % DRILL_USER_COLORS.length],
-              points: pointsByKey(selectedChart, data, now, locale),
-            } as DrillSeries;
+            return { userName, color: DRILL_USER_COLORS[index % DRILL_USER_COLORS.length], points: pointsByKey(selectedChart, data, now, locale) } as DrillSeries;
           }),
         );
         setDrillSeries(rows);
@@ -486,7 +470,6 @@ export function StatsPage() {
         setDrillLoading(false);
       }
     };
-
     void run();
   }, [selectedChart, drillUsers, locale]);
 
@@ -494,209 +477,116 @@ export function StatsPage() {
     if (!selectedChart) return;
     const target = document.getElementById(`drill-${selectedChart}`);
     if (!target) return;
-    window.requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+    window.requestAnimationFrame(() => { target.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
   }, [selectedChart]);
 
-  if (loading) {
-    return <LoadingState title={t.loading} />;
-  }
-
-  if (error) {
-    return <ErrorState title={t.loadError} description={error} />;
-  }
-
-  if (!overview || !users || !media) {
-    return <EmptyState title={t.noStatsTitle} description={t.noStatsDesc} />;
-  }
+  if (loading) return <LoadingState title={t.loading} />;
+  if (error) return <ErrorState title={t.loadError} description={error} />;
+  if (!overview || !users || !media) return <EmptyState title={t.noStatsTitle} description={t.noStatsDesc} />;
 
   const now = new Date();
 
-  const fullWidthCharts: FullWidthChart[] = [
-    {
-      key: "sessions_day",
-      kind: "sessions",
-      chartType: "bar",
-      title: t.sessionsByDay,
-      subtitle: t.sessionsByDaySub,
-      points: buildByDay(overview.sessions_by_day, now, locale, (row) => row.sessions),
-      yAxis: t.ySessions,
-      xAxis: t.xDay,
-    },
-    {
-      key: "sessions_week",
-      kind: "sessions",
-      chartType: "area",
-      title: t.sessionsByWeek,
-      subtitle: t.sessionsByWeekSub,
-      points: buildByWeek(overview.sessions_by_week, now, locale, (row) => row.sessions),
-      yAxis: t.ySessions,
-      xAxis: t.xWeek,
-    },
-    {
-      key: "sessions_month",
-      kind: "sessions",
-      chartType: "area",
-      title: t.sessionsByMonth,
-      subtitle: t.sessionsByMonthSub,
-      points: buildByMonth(overview.sessions_by_month, now, locale, (row) => row.sessions),
-      yAxis: t.ySessions,
-      xAxis: t.xMonth,
-    },
-    {
-      key: "sessions_year",
-      kind: "sessions",
-      chartType: "bar",
-      title: t.sessionsByYear,
-      subtitle: t.sessionsByYearSub,
-      points: buildByYear(overview.sessions_by_year, now, (row) => row.sessions),
-      yAxis: t.ySessions,
-      xAxis: t.xYear,
-    },
-
-    {
-      key: "bandwidth_day",
-      kind: "bandwidth",
-      chartType: "area",
-      title: t.bandwidthByDay,
-      subtitle: t.bandwidthByDaySub,
-      points: buildByDay(overview.bandwidth_by_day, now, locale, (row) => row.avg_bandwidth_bps),
-      yAxis: t.yBandwidth,
-      xAxis: t.xDay,
-    },
-    {
-      key: "bandwidth_week",
-      kind: "bandwidth",
-      chartType: "area",
-      title: t.bandwidthByWeek,
-      subtitle: t.bandwidthByWeekSub,
-      points: buildByWeek(overview.bandwidth_by_week, now, locale, (row) => row.avg_bandwidth_bps),
-      yAxis: t.yBandwidth,
-      xAxis: t.xWeek,
-    },
-    {
-      key: "bandwidth_month",
-      kind: "bandwidth",
-      chartType: "area",
-      title: t.bandwidthByMonth,
-      subtitle: t.bandwidthByMonthSub,
-      points: buildByMonth(overview.bandwidth_by_month, now, locale, (row) => row.avg_bandwidth_bps),
-      yAxis: t.yBandwidth,
-      xAxis: t.xMonth,
-    },
-    {
-      key: "bandwidth_year",
-      kind: "bandwidth",
-      chartType: "area",
-      title: t.bandwidthByYear,
-      subtitle: t.bandwidthByYearSub,
-      points: buildByYear(overview.bandwidth_by_year, now, (row) => row.avg_bandwidth_bps),
-      yAxis: t.yBandwidth,
-      xAxis: t.xYear,
-    },
-
-    {
-      key: "shared_day",
-      kind: "shared",
-      chartType: "bar",
-      title: t.sharedByDay,
-      subtitle: t.sharedByDaySub,
-      points: buildByDay(overview.shared_by_day, now, locale, (row) => row.shared_bytes),
-      yAxis: t.yShared,
-      xAxis: t.xDay,
-    },
-    {
-      key: "shared_week",
-      kind: "shared",
-      chartType: "area",
-      title: t.sharedByWeek,
-      subtitle: t.sharedByWeekSub,
-      points: buildByWeek(overview.shared_by_week, now, locale, (row) => row.shared_bytes),
-      yAxis: t.yShared,
-      xAxis: t.xWeek,
-    },
-    {
-      key: "shared_month",
-      kind: "shared",
-      chartType: "area",
-      title: t.sharedByMonth,
-      subtitle: t.sharedByMonthSub,
-      points: buildByMonth(overview.shared_by_month, now, locale, (row) => row.shared_bytes),
-      yAxis: t.yShared,
-      xAxis: t.xMonth,
-    },
-    {
-      key: "shared_year",
-      kind: "shared",
-      chartType: "bar",
-      title: t.sharedByYear,
-      subtitle: t.sharedByYearSub,
-      points: buildByYear(overview.shared_by_year, now, (row) => row.shared_bytes),
-      yAxis: t.yShared,
-      xAxis: t.xYear,
-    },
-
-    {
-      key: "peak_hours",
-      kind: "sessions",
-      chartType: "bar",
-      title: t.peakHours,
-      subtitle: t.peakHoursSub,
-      points: buildHours(overview.play_count_by_hour),
-      yAxis: t.ySessions,
-      xAxis: t.xHour,
-    },
-    {
-      key: "shared_hour",
-      kind: "shared",
-      chartType: "bar",
-      title: t.sharedByHour,
-      subtitle: t.sharedByHourSub,
-      points: buildSharedHours(overview.shared_by_hour),
-      yAxis: t.yShared,
-      xAxis: t.xHour,
-    },
-  ];
-
+  // --- Derived data ---
   const platformBars = overview.play_count_by_platform.map((item) => ({ label: item.label, value: item.sessions }));
-
-  const userBars = users.items.slice(0, 8).map((item) => ({
-    label: item.user_name,
-    value: item.sessions,
-    hint: `${item.active_sessions} ${t.activeWord}`,
-  }));
-
+  const userBars = users.items.slice(0, 8).map((item) => ({ label: item.user_name, value: item.sessions, hint: `${item.active_sessions} ${t.activeWord}` }));
   const userBwBars = users.items
     .filter((item) => item.avg_bandwidth_bps != null && item.avg_bandwidth_bps > 0)
     .sort((a, b) => (b.avg_bandwidth_bps ?? 0) - (a.avg_bandwidth_bps ?? 0))
     .slice(0, 8)
-    .map((item) => ({
-      label: item.user_name,
-      value: item.avg_bandwidth_bps ?? 0,
-    }));
-
+    .map((item) => ({ label: item.user_name, value: item.avg_bandwidth_bps ?? 0 }));
   const weekdayBars = overview.play_count_by_weekday.map((item) => ({ label: item.label, value: item.sessions }));
+  const mediaRows = [{
+    label: t.seriesLabel,
+    seriesA: overview.play_count_by_media_type.find((item) => item.label.toLowerCase() === "series")?.sessions ?? 0,
+    seriesB: overview.play_count_by_media_type.find((item) => item.label.toLowerCase() === "movie")?.sessions ?? 0,
+  }];
+  const donutSlices = overview.source_distribution.map((item, index) => ({ label: item.source, value: item.sessions, color: DRILL_USER_COLORS[index % DRILL_USER_COLORS.length] }));
 
-  const mediaRows = [
-    {
-      label: t.seriesLabel,
-      seriesA: overview.play_count_by_media_type.find((item) => item.label.toLowerCase() === "series")?.sessions ?? 0,
-      seriesB: overview.play_count_by_media_type.find((item) => item.label.toLowerCase() === "movie")?.sessions ?? 0,
-    },
-  ];
+  // --- Trend chart helpers ---
+  const sessionsChartKey = `sessions_${sessionsPeriod}` as DrillChartKey;
+  const bandwidthChartKey = `bandwidth_${bandwidthPeriod}` as DrillChartKey;
+  const sharedChartKey = `shared_${sharedPeriod}` as DrillChartKey;
 
-  const donutSlices = overview.source_distribution.map((item, index) => ({
-    label: item.source,
-    value: item.sessions,
-    color: DRILL_USER_COLORS[index % DRILL_USER_COLORS.length],
-  }));
+  const sessionsPoints = pointsByKey(sessionsChartKey, overview, now, locale);
+  const bandwidthPoints = pointsByKey(bandwidthChartKey, overview, now, locale);
+  const sharedPoints = pointsByKey(sharedChartKey, overview, now, locale);
+  const peakHoursPoints = buildHours(overview.play_count_by_hour);
 
-  const renderValue = (chart: FullWidthChart) => {
-    if (chart.kind === "bandwidth") return formatBps;
-    if (chart.kind === "shared") return formatBytes;
-    return (value: number) => `${formatInt(Math.round(value))} ${t.sessionsShort}`;
+  const sessionsChartIsArea = sessionsPeriod === "week" || sessionsPeriod === "month";
+  const bandwidthChartIsArea = true;
+  const sharedChartIsArea = sharedPeriod === "week" || sharedPeriod === "month";
+
+  const sessionsSubtitles: Record<SessionPeriod, string> = {
+    day: t.sessionsByDaySub, week: t.sessionsByWeekSub, month: t.sessionsByMonthSub, year: t.sessionsByYearSub,
   };
+  const bandwidthSubtitles: Record<BandwidthPeriod, string> = {
+    day: t.bandwidthByDaySub, week: t.bandwidthByWeekSub, month: t.bandwidthByMonthSub, year: t.bandwidthByYearSub,
+  };
+  const sharedSubtitles: Record<SharedPeriod, string> = {
+    day: t.sharedByDaySub, week: t.sharedByWeekSub, month: t.sharedByMonthSub, year: t.sharedByYearSub, hour: t.sharedByHourSub,
+  };
+  const xAxisLabel: Record<string, string> = {
+    day: t.xDay, week: t.xWeek, month: t.xMonth, year: t.xYear, hour: t.xHour,
+  };
+  const formatSessions = (value: number) => `${formatInt(Math.round(value))} ${t.sessionsShort}`;
+
+  function PeriodTabs<T extends string>({
+    periods,
+    labels,
+    selected,
+    onChange,
+  }: {
+    periods: T[];
+    labels: Record<T, string>;
+    selected: T;
+    onChange: (p: T) => void;
+  }) {
+    return (
+      <div className="flex gap-0.5 rounded-lg bg-white/5 p-0.5" onClick={(e) => e.stopPropagation()}>
+        {periods.map((p) => (
+          <button
+            key={p}
+            onClick={(e) => { e.stopPropagation(); onChange(p); }}
+            className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${selected === p ? "bg-cyan-500/20 text-cyan-300" : "text-fg-muted hover:text-fg"}`}
+          >
+            {labels[p]}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function DrillPanel({ chartKey, valueFormatter, yAxis, xAxis }: {
+    chartKey: DrillChartKey;
+    valueFormatter: (v: number) => string;
+    yAxis: string;
+    xAxis: string;
+  }) {
+    const isSelected = selectedChart === chartKey;
+    return (
+      <div
+        id={`drill-${chartKey}`}
+        className={`overflow-hidden transition-all duration-300 ease-out ${isSelected ? "max-h-[580px] opacity-100" : "max-h-0 opacity-0"}`}
+      >
+        {isSelected ? (
+          <ChartCard title={`${t.drillTitlePrefix}`} subtitle={t.drillSubtitle}>
+            {drillLoading ? (
+              <LoadingState title={t.loadingDrill} />
+            ) : drillSeries && drillSeries.length > 0 ? (
+              <MultiLineChart
+                series={drillSeries.map((s) => ({ label: s.userName, color: s.color, points: s.points }))}
+                valueFormatter={valueFormatter}
+                yAxisTitle={yAxis}
+                xAxisTitle={xAxis}
+              />
+            ) : (
+              <EmptyState title={t.noDrillTitle} description={t.noDrillDesc} />
+            )}
+          </ChartCard>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -705,6 +595,7 @@ export function StatsPage() {
         <p className="text-fg-muted">{t.pageSubtitle}</p>
       </header>
 
+      {/* KPI cards */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <StatCard label={t.totalSessions} value={formatInt(overview.total_sessions)} hint={t.historical} />
         <StatCard label={t.activeNow} value={formatInt(overview.active_sessions)} hint={t.liveNow} />
@@ -713,106 +604,134 @@ export function StatsPage() {
         <StatCard label={t.totalWatchHours} value={`${overview.total_watch_hours.toLocaleString()} h`} hint={t.allTime} />
       </section>
 
+      {/* ── Distribuciones ─────────────────────────────────────────── */}
+      <SectionDivider label={t.sectionDistributions} />
+
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ChartCard title={t.sourceDistribution} subtitle={t.sourceDistributionSub}>
           <DonutChart slices={donutSlices} />
         </ChartCard>
-
-        <ChartCard title={t.topUsers} subtitle={t.topUsersSub}>
-          <HorizontalBars items={userBars} valueFormatter={(value) => `${formatInt(value)} ${t.sessionsShort}`} />
-        </ChartCard>
-
-        <ChartCard title={t.playByPlatform} subtitle={t.playByPlatformSub}>
-          <HorizontalBars items={platformBars} valueFormatter={(value) => `${formatInt(value)} ${t.sessionsShort}`} />
-        </ChartCard>
-
-        <ChartCard title={t.playByWeekday} subtitle={t.playByWeekdaySub}>
-          <VerticalBarChart
-            points={weekdayBars}
-            valueFormatter={(value) => `${formatInt(Math.round(value))} ${t.sessionsShort}`}
-            yAxisTitle={t.ySessions}
-            xAxisTitle={t.xDay}
-          />
-        </ChartCard>
-
         <ChartCard title={t.playByMedia} subtitle={t.playByMediaSub}>
           <GroupedBarChart
             items={mediaRows}
             seriesALabel={t.seriesLabel}
             seriesBLabel={t.moviesLabel}
-            valueFormatter={(value) => `${formatInt(Math.round(value))} ${t.sessionsShort}`}
+            valueFormatter={formatSessions}
             yAxisTitle={t.ySessions}
             xAxisTitle={t.xDay}
           />
         </ChartCard>
+        <ChartCard title={t.playByPlatform} subtitle={t.playByPlatformSub}>
+          <HorizontalBars items={platformBars} valueFormatter={formatSessions} />
+        </ChartCard>
+      </section>
 
+      <ChartCard title={t.peakHours} subtitle={t.peakHoursSub} onClick={() => setSelectedChart((prev) => prev === "peak_hours" ? null : "peak_hours")} selected={selectedChart === "peak_hours"}>
+        <VerticalBarChart points={peakHoursPoints} valueFormatter={formatSessions} yAxisTitle={t.ySessions} xAxisTitle={t.xHour} maxXTicks={8} />
+      </ChartCard>
+      <DrillPanel chartKey="peak_hours" valueFormatter={formatSessions} yAxis={t.ySessions} xAxis={t.xHour} />
+
+      {/* ── Usuarios y contenido ───────────────────────────────────── */}
+      <SectionDivider label={t.sectionUsersContent} />
+
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <ChartCard title={t.topUsers} subtitle={t.topUsersSub}>
+          <HorizontalBars items={userBars} valueFormatter={formatSessions} />
+        </ChartCard>
         <ChartCard title={t.topUsersBw} subtitle={t.topUsersBwSub}>
           <HorizontalBars items={userBwBars} valueFormatter={formatBps} />
         </ChartCard>
+        <ChartCard title={t.playByWeekday} subtitle={t.playByWeekdaySub}>
+          <VerticalBarChart points={weekdayBars} valueFormatter={formatSessions} yAxisTitle={t.ySessions} xAxisTitle={t.xDay} />
+        </ChartCard>
+      </section>
 
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard title={t.topMovies} subtitle={t.topMoviesSub}>
           <TopMediaList items={media.top_movies} usersLabel={t.usersLower} />
         </ChartCard>
-
         <ChartCard title={t.topSeries} subtitle={t.topSeriesSub}>
           <TopMediaList items={media.top_series} usersLabel={t.usersLower} />
         </ChartCard>
       </section>
 
-      <section className="space-y-4">
-        {fullWidthCharts.map((chart) => {
-          const isSelected = selectedChart === chart.key;
-          return (
-            <div key={chart.key} className="space-y-3">
-              <ChartCard title={chart.title} subtitle={chart.subtitle} onClick={() => setSelectedChart(chart.key)} selected={isSelected}>
-                {chart.chartType === "area" ? (
-                  <AreaChart
-                    points={chart.points}
-                    valueFormatter={renderValue(chart)}
-                    yAxisTitle={chart.yAxis}
-                    xAxisTitle={chart.xAxis}
-                  />
-                ) : (
-                  <VerticalBarChart
-                    points={chart.points}
-                    valueFormatter={renderValue(chart)}
-                    yAxisTitle={chart.yAxis}
-                    xAxisTitle={chart.xAxis}
-                    maxXTicks={chart.key.includes("hour") ? 8 : 12}
-                  />
-                )}
-              </ChartCard>
+      {/* ── Tendencias ─────────────────────────────────────────────── */}
+      <SectionDivider label={t.sectionTrends} />
 
-              <div
-                id={`drill-${chart.key}`}
-                className={`overflow-hidden transition-all duration-300 ease-out ${isSelected ? "max-h-[580px] opacity-100" : "max-h-0 opacity-0"}`}
-              >
-                {isSelected ? (
-                  <ChartCard title={`${t.drillTitlePrefix}: ${chart.title}`} subtitle={t.drillSubtitle}>
-                    {drillLoading ? (
-                      <LoadingState title={t.loadingDrill} />
-                    ) : drillSeries && drillSeries.length > 0 ? (
-                      <MultiLineChart
-                        series={drillSeries.map((series) => ({
-                          label: series.userName,
-                          color: series.color,
-                          points: series.points,
-                        }))}
-                        valueFormatter={renderValue(chart)}
-                        yAxisTitle={chart.yAxis}
-                        xAxisTitle={chart.xAxis}
-                      />
-                    ) : (
-                      <EmptyState title={t.noDrillTitle} description={t.noDrillDesc} />
-                    )}
-                  </ChartCard>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </section>
+      {/* Sessions */}
+      <div className="space-y-3">
+        <ChartCard
+          title={t.trendSessions}
+          subtitle={sessionsSubtitles[sessionsPeriod]}
+          onClick={() => setSelectedChart((prev) => prev === sessionsChartKey ? null : sessionsChartKey)}
+          selected={selectedChart === sessionsChartKey}
+          rightSlot={
+            <PeriodTabs
+              periods={["day", "week", "month", "year"] as SessionPeriod[]}
+              labels={{ day: t.periodDay, week: t.periodWeek, month: t.periodMonth, year: t.periodYear }}
+              selected={sessionsPeriod}
+              onChange={handleSessionsPeriod}
+            />
+          }
+        >
+          {sessionsChartIsArea ? (
+            <AreaChart points={sessionsPoints} valueFormatter={formatSessions} yAxisTitle={t.ySessions} xAxisTitle={xAxisLabel[sessionsPeriod]} />
+          ) : (
+            <VerticalBarChart points={sessionsPoints} valueFormatter={formatSessions} yAxisTitle={t.ySessions} xAxisTitle={xAxisLabel[sessionsPeriod]} />
+          )}
+        </ChartCard>
+        <DrillPanel chartKey={sessionsChartKey} valueFormatter={formatSessions} yAxis={t.ySessions} xAxis={xAxisLabel[sessionsPeriod]} />
+      </div>
+
+      {/* Bandwidth */}
+      <div className="space-y-3">
+        <ChartCard
+          title={t.trendBandwidth}
+          subtitle={bandwidthSubtitles[bandwidthPeriod]}
+          onClick={() => setSelectedChart((prev) => prev === bandwidthChartKey ? null : bandwidthChartKey)}
+          selected={selectedChart === bandwidthChartKey}
+          rightSlot={
+            <PeriodTabs
+              periods={["day", "week", "month", "year"] as BandwidthPeriod[]}
+              labels={{ day: t.periodDay, week: t.periodWeek, month: t.periodMonth, year: t.periodYear }}
+              selected={bandwidthPeriod}
+              onChange={handleBandwidthPeriod}
+            />
+          }
+        >
+          {bandwidthChartIsArea ? (
+            <AreaChart points={bandwidthPoints} valueFormatter={formatBps} yAxisTitle={t.yBandwidth} xAxisTitle={xAxisLabel[bandwidthPeriod]} />
+          ) : (
+            <VerticalBarChart points={bandwidthPoints} valueFormatter={formatBps} yAxisTitle={t.yBandwidth} xAxisTitle={xAxisLabel[bandwidthPeriod]} />
+          )}
+        </ChartCard>
+        <DrillPanel chartKey={bandwidthChartKey} valueFormatter={formatBps} yAxis={t.yBandwidth} xAxis={xAxisLabel[bandwidthPeriod]} />
+      </div>
+
+      {/* Shared */}
+      <div className="space-y-3">
+        <ChartCard
+          title={t.trendShared}
+          subtitle={sharedSubtitles[sharedPeriod]}
+          onClick={() => setSelectedChart((prev) => prev === sharedChartKey ? null : sharedChartKey)}
+          selected={selectedChart === sharedChartKey}
+          rightSlot={
+            <PeriodTabs
+              periods={["day", "week", "month", "year", "hour"] as SharedPeriod[]}
+              labels={{ day: t.periodDay, week: t.periodWeek, month: t.periodMonth, year: t.periodYear, hour: t.period24h }}
+              selected={sharedPeriod}
+              onChange={handleSharedPeriod}
+            />
+          }
+        >
+          {sharedChartIsArea ? (
+            <AreaChart points={sharedPoints} valueFormatter={formatBytes} yAxisTitle={t.yShared} xAxisTitle={xAxisLabel[sharedPeriod]} />
+          ) : (
+            <VerticalBarChart points={sharedPoints} valueFormatter={formatBytes} yAxisTitle={t.yShared} xAxisTitle={xAxisLabel[sharedPeriod]} maxXTicks={sharedPeriod === "hour" ? 8 : 12} />
+          )}
+        </ChartCard>
+        <DrillPanel chartKey={sharedChartKey} valueFormatter={formatBytes} yAxis={t.yShared} xAxis={xAxisLabel[sharedPeriod]} />
+      </div>
     </div>
   );
 }
-
