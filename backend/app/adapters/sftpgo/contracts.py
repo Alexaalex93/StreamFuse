@@ -25,6 +25,9 @@ class SFTPGoRawTransferLog(TypedDict, total=False):
     timestamp: int
     time: str
 
+    level: str
+    sender: str   # SFTPGo standard log format: "Download" for transfer events
+
     event: str
     action: str
 
@@ -33,11 +36,14 @@ class SFTPGoRawTransferLog(TypedDict, total=False):
 
     username: str
     ip_address: str
+    remote_addr: str
     path: str
     file_path: str
 
     bytes_sent: int
     bytes_received: int
     bytes_total: int
+    size_bytes: int    # SFTPGo FTP/SFTP completed transfer size
+    elapsed_ms: int    # SFTPGo FTP/SFTP transfer duration in milliseconds
 
     protocol: str

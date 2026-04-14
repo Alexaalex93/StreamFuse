@@ -43,7 +43,7 @@ _MEDIA_FILE_EXTENSIONS = {
     ".xvid",
 }
 _MIN_MEANINGFUL_TRANSFER_BYTES = 10 * 1024 * 1024
-_MIN_MEANINGFUL_DURATION_SECONDS = 180
+_MIN_SEGMENT_BYTES_FOR_PLAYBACK = 50 * 1024 * 1024  # single completed segment ≥ 50 MB → real playback
 
 
 class SFTPGoSyncService:
@@ -594,7 +594,6 @@ class SFTPGoSyncService:
         return f"{username.strip().lower()}|{ip_address.strip()}|{file_path.strip().lower()}"
     def _looks_like_download(self, connection: dict[str, Any], logs: list[dict[str, Any]]) -> bool:
         total_bytes = self._extract_total_bytes(connection, logs) or 0
-        elapsed_seconds = self._extract_elapsed_seconds(connection, logs)
 
         has_download_signal = False
         if any(self._is_download_log(log) for log in logs):
@@ -606,7 +605,8 @@ class SFTPGoSyncService:
                 if not isinstance(transfer, dict):
                     continue
                 op = str(transfer.get("operation_type") or "").lower()
-                if op == "download":
+                transfer_type = transfer.get("type")
+                if op == "download" or transfer_type == 1:  # SFTPGo API v2: type 1 = download
                     has_download_signal = True
                     break
 
@@ -614,11 +614,18 @@ class SFTPGoSyncService:
         if "dl:" in info or "download" in info:
             has_download_signal = True
 
-        return (
-            has_download_signal
-            and total_bytes >= _MIN_MEANINGFUL_TRANSFER_BYTES
-            and elapsed_seconds >= _MIN_MEANINGFUL_DURATION_SECONDS
-        )
+        if not has_download_signal:
+            return False
+
+        # A single completed segment ≥ 50 MB is unambiguous playback regardless of connection age.
+        max_segment_bytes = max(
+            (_to_int(log.get("size_bytes")) or 0) for log in logs
+        ) if logs else 0
+        if max_segment_bytes >= _MIN_SEGMENT_BYTES_FOR_PLAYBACK:
+            return True
+
+        # Active connection that has already sent ≥ 10 MB is also real.
+        return total_bytes >= _MIN_MEANINGFUL_TRANSFER_BYTES
 
     def _is_download_connection(self, connection: dict[str, Any]) -> bool:
         has_download_signal = False
@@ -627,7 +634,10 @@ class SFTPGoSyncService:
         if isinstance(transfers, list):
             if any(
                 isinstance(transfer, dict)
-                and str(transfer.get("operation_type") or "").lower() == "download"
+                and (
+                    str(transfer.get("operation_type") or "").lower() == "download"
+                    or transfer.get("type") == 1  # SFTPGo API v2: type 1 = download
+                )
                 for transfer in transfers
             ):
                 has_download_signal = True
@@ -638,12 +648,14 @@ class SFTPGoSyncService:
 
         file_path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
         bytes_sent = _to_int(connection.get("bytes_sent")) or 0
-        elapsed_seconds = self._extract_elapsed_seconds(connection, [])
 
+        # ≥ 10 MB already sent with a media path is a strong signal on its own.
+        # No duration gate: FTP clients like Infuse reconnect frequently, resetting
+        # connection_time each time, so a fixed elapsed threshold would never be met.
         if file_path and bytes_sent >= _MIN_MEANINGFUL_TRANSFER_BYTES:
             has_download_signal = True
 
-        return has_download_signal and elapsed_seconds >= _MIN_MEANINGFUL_DURATION_SECONDS
+        return has_download_signal
     def _connection_snapshot(
         self,
         connection: dict[str, Any],
@@ -686,6 +698,11 @@ class SFTPGoSyncService:
 
     @staticmethod
     def _is_download_log(log: dict[str, Any]) -> bool:
+        # SFTPGo standard log format: transfer events use sender="Download"
+        sender = str(log.get("sender") or "").lower()
+        if sender == "download":
+            return True
+
         event = str(log.get("event") or log.get("operation") or log.get("action") or "").lower()
         direction = str(log.get("direction") or "").lower()
         info = str(log.get("info") or "").lower()
