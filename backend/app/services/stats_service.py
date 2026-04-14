@@ -526,11 +526,10 @@ class StatsService:
             return ZoneInfo("UTC")
 
     @staticmethod
-    def _extract_shared_bytes(row: object) -> int:
+    def _extract_shared_bytes(row: object) -> int:  # noqa: C901
         source = getattr(row, "source", None)
         status = getattr(row, "status", None)
         raw_payload = getattr(row, "raw_payload", None)
-        file_path = getattr(row, "file_path", None)
         started_at = getattr(row, "started_at", None)
         ended_at = getattr(row, "ended_at", None)
         updated_at = getattr(row, "updated_at", None)
@@ -540,6 +539,12 @@ class StatsService:
 
         if not isinstance(raw_payload, dict):
             raw_payload = {}
+
+        # Active sessions are still in progress — any estimate would be speculative
+        # and risks massive over-counting (e.g. inflated bandwidth_bps from a spike).
+        # Only count confirmed completed sessions.
+        if status == SessionStatus.ACTIVE:
+            return 0
 
         def _clamp_ratio(value: float | None) -> float | None:
             if value is None:
@@ -551,78 +556,85 @@ class StatsService:
                 return int(value)
             return None
 
-        bytes_sent = _numeric(raw_payload.get("bytes_sent"))
-        if bytes_sent:
-            return bytes_sent
-
+        # ── Connection-based sources (SFTPGo, Samba) ─────────────────────────
         connection = raw_payload.get("connection")
         if isinstance(connection, dict):
+            # 1. Bytes reported directly at the connection level.
             conn_sent = _numeric(connection.get("bytes_sent"))
             if conn_sent:
                 return conn_sent
 
+            # 2. Transfer size from non-SFTPGo adapters that use {"transfer": {"size": N}}.
             transfer = raw_payload.get("transfer")
             if isinstance(transfer, dict):
                 transfer_size = _numeric(transfer.get("size"))
                 if transfer_size:
                     return transfer_size
 
+            # 3. SFTPGo logs: sum of size_bytes from completed "Download" events.
+            # This is the most accurate source — each entry records a completed segment.
+            logs = raw_payload.get("logs")
+            if isinstance(logs, list):
+                log_bytes = sum(
+                    _numeric(log.get("size_bytes")) or 0
+                    for log in logs
+                    if isinstance(log, dict)
+                    and str(log.get("sender") or "").lower() == "download"
+                )
+                if log_bytes > 0:
+                    return log_bytes
+
+            # 4. active_transfers: last resort for ended sessions.
+            # WARNING: in some SFTPGo versions .size may be the total file size rather
+            # than bytes transferred, so we trust it only when the session has ended and
+            # logs provided nothing.
             transfers = connection.get("active_transfers")
             if isinstance(transfers, list):
-                sizes = []
-                for item in transfers:
-                    if not isinstance(item, dict):
-                        continue
-                    # SFTPGo API v2 uses type=1 for downloads (integer);
-                    # older/other adapters may use operation_type="download" (string)
-                    is_download = (
+                total_transfer = sum(
+                    _numeric(item.get("size")) or 0
+                    for item in transfers
+                    if isinstance(item, dict)
+                    and (
                         item.get("type") == 1
                         or str(item.get("operation_type") or "").lower() == "download"
                     )
-                    if not is_download:
-                        continue
-                    size = _numeric(item.get("size"))
-                    if size:
-                        sizes.append(size)
-                if sizes:
-                    return max(sizes)
+                )
+                if total_transfer > 0:
+                    return total_transfer
 
+        # ── Tautulli (file_size × watch ratio) ───────────────────────────────
         file_size = _numeric(raw_payload.get("file_size"))
 
         ratio: float | None = None
         view_offset = raw_payload.get("view_offset")
-        if isinstance(view_offset, (int, float)) and isinstance(duration_ms, (int, float)) and duration_ms and duration_ms > 0:
+        if isinstance(view_offset, (int, float)) and isinstance(duration_ms, (int, float)) and duration_ms > 0:
             ratio = _clamp_ratio(float(view_offset) / float(duration_ms))
 
         if ratio is None and isinstance(progress_percent, (int, float)):
             ratio = _clamp_ratio(float(progress_percent) / 100.0)
 
-        if ratio is None and started_at and duration_ms and isinstance(duration_ms, (int, float)) and duration_ms > 0:
-            end_ref = ended_at or updated_at or datetime.now(tz=started_at.tzinfo)
-            if end_ref and end_ref > started_at:
-                elapsed_ms = (end_ref - started_at).total_seconds() * 1000.0
-                ratio = _clamp_ratio(elapsed_ms / float(duration_ms))
-
         if file_size:
             if ratio is not None and ratio > 0:
-                estimate = int(file_size * ratio)
-                if estimate > 0:
-                    return estimate
+                return int(file_size * ratio)
+            # For a fully confirmed ended Tautulli session with no ratio: use file_size.
             if source == StreamSource.TAUTULLI and status == SessionStatus.ENDED:
                 return file_size
 
+        # ── Bandwidth estimate fallback (least reliable) ──────────────────────
+        # Use only actual ended_at / updated_at — never datetime.now() — to avoid
+        # inflating active session estimates if they slip through.
         if bandwidth_bps and started_at:
-            end_ref = ended_at or updated_at or datetime.now(tz=started_at.tzinfo)
+            end_ref = ended_at or updated_at
             if end_ref and end_ref > started_at:
                 elapsed_sec = (end_ref - started_at).total_seconds()
-                estimate = int((float(bandwidth_bps) / 8.0) * elapsed_sec)
+                # Cap bandwidth to 1 Gbps; spikes from active_transfers inflation cannot
+                # produce absurd totals (e.g. 45 GB/s recorded for a 1-second delta).
+                capped_bps = min(float(bandwidth_bps), 1_000_000_000.0)
+                estimate = int((capped_bps / 8.0) * elapsed_sec)
                 if file_size:
                     return max(0, min(file_size, estimate))
                 if estimate > 0:
                     return estimate
-
-        if file_path and str(file_path).lower().endswith((".mkv", ".mp4", ".avi", ".mov", ".m4v", ".ts", ".m2ts", ".mts", ".wmv", ".flv", ".webm", ".mpg", ".mpeg")):
-            return 0
 
         return 0
 

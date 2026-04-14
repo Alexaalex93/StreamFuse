@@ -446,7 +446,10 @@ class SFTPGoSyncService:
         if delta_bytes <= 0 or delta_seconds <= 0:
             return None
 
-        return int(delta_bytes / delta_seconds)
+        raw_bps = int(delta_bytes / delta_seconds)
+        # Cap at 1 Gbps. active_transfers[].size can report the total file size in some
+        # SFTPGo versions, causing a massive delta on the first poll that inflates bandwidth.
+        return min(raw_bps, 1_000_000_000)
 
     @staticmethod
     def _extract_total_bytes(connection: dict[str, Any], logs: list[dict[str, Any]]) -> int | None:
