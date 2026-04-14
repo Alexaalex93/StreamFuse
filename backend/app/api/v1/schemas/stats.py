@@ -43,6 +43,8 @@ class OverviewStatsResponse(BaseModel):
     active_sessions: int
     ended_sessions: int
     stale_sessions: int
+    unique_users: int
+    total_watch_hours: float
     total_shared_bytes: int
     total_shared_human: str
     sessions_by_day: list[DailySessionsPoint]

@@ -47,6 +47,8 @@ class StatsService:
                     else_=0,
                 )
             ).label("stale_sessions"),
+            func.count(func.distinct(UnifiedStreamSessionModel.user_name)).label("unique_users"),
+            func.sum(UnifiedStreamSessionModel.duration_ms).label("total_duration_ms"),
         ).where(*self._where(filters))
 
         totals = self.db.execute(totals_stmt).one()
@@ -203,11 +205,16 @@ class StatsService:
             for key, value in sorted(platform_counts.items(), key=lambda item: item[1], reverse=True)[:10]
         ]
 
+        total_duration_ms = float(totals.total_duration_ms or 0)
+        total_watch_hours = round(total_duration_ms / 3_600_000, 1)
+
         return {
             "total_sessions": int(totals.total_sessions or 0),
             "active_sessions": int(totals.active_sessions or 0),
             "ended_sessions": int(totals.ended_sessions or 0),
             "stale_sessions": int(totals.stale_sessions or 0),
+            "unique_users": int(totals.unique_users or 0),
+            "total_watch_hours": total_watch_hours,
             "total_shared_bytes": int(total_shared_bytes),
             "total_shared_human": _format_bytes(total_shared_bytes),
             "sessions_by_day": [{"day": row["day"], "sessions": int(row["sessions"])} for row in per_day],

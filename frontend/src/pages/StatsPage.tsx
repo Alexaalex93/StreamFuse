@@ -9,6 +9,7 @@ import { EmptyState } from "@/shared/ui/states/EmptyState";
 import { ErrorState } from "@/shared/ui/states/ErrorState";
 import { LoadingState } from "@/shared/ui/states/LoadingState";
 
+import { AreaChart } from "@/features/stats/components/AreaChart";
 import { ChartCard } from "@/features/stats/components/ChartCard";
 import { DonutChart } from "@/features/stats/components/DonutChart";
 import { GroupedBarChart } from "@/features/stats/components/GroupedBarChart";
@@ -31,17 +32,18 @@ type DrillChartKey =
   | "shared_month"
   | "shared_year"
   | "shared_hour"
-  | "peak_hours"
-  | "play_count_hour";
+  | "peak_hours";
 
 type SeriesPoint = { label: string; value: number };
 type DrillSeries = { userName: string; color: string; points: SeriesPoint[] };
 
 type ChartKind = "sessions" | "bandwidth" | "shared";
+type ChartType = "bar" | "area";
 
 type FullWidthChart = {
   key: DrillChartKey;
   kind: ChartKind;
+  chartType: ChartType;
   title: string;
   subtitle: string;
   points: SeriesPoint[];
@@ -62,12 +64,13 @@ const TEXT = {
 
     totalSessions: "Sesiones totales",
     activeNow: "Activas ahora",
-    ended: "Finalizadas",
-    stale: "Recuperadas",
     totalShared: "Total compartido",
+    uniqueUsers: "Usuarios únicos",
+    totalWatchHours: "Horas totales",
     historical: "Histórico",
     liveNow: "En directo",
     cumulative: "Acumulado",
+    allTime: "Histórico",
 
     sessionsShort: "ses.",
     usersWord: "usuarios",
@@ -113,9 +116,7 @@ const TEXT = {
     sharedByHourSub: "Últimas 24 horas. Eje X: hora local. Eje Y: bytes compartidos.",
 
     peakHours: "Horas punta de visualización",
-    peakHoursSub: "Últimas 24 horas. Eje X: hora local. Eje Y: sesiones iniciadas.",
-    playCountHour: "Recuento por hora",
-    playCountHourSub: "Distribución por hora local. Eje X: hora. Eje Y: sesiones.",
+    peakHoursSub: "Distribución por hora local. Eje X: hora. Eje Y: sesiones iniciadas.",
 
     sourceDistribution: "Distribución por fuente",
     sourceDistributionSub: "Reparto de sesiones por proveedor.",
@@ -157,12 +158,13 @@ const TEXT = {
 
     totalSessions: "Total Sessions",
     activeNow: "Active Now",
-    ended: "Ended",
-    stale: "Recovered",
     totalShared: "Total Shared",
+    uniqueUsers: "Unique Users",
+    totalWatchHours: "Total Hours",
     historical: "Historical",
     liveNow: "Live now",
     cumulative: "Cumulative",
+    allTime: "All time",
 
     sessionsShort: "ses.",
     usersWord: "users",
@@ -208,9 +210,7 @@ const TEXT = {
     sharedByHourSub: "Last 24 hours. X-axis: local hour. Y-axis: shared bytes.",
 
     peakHours: "Peak Viewing Hours",
-    peakHoursSub: "Last 24 hours. X-axis: local hour. Y-axis: started sessions.",
-    playCountHour: "Play Count by Hour",
-    playCountHourSub: "Local-hour distribution. X-axis: hour. Y-axis: sessions.",
+    peakHoursSub: "Local-hour distribution. X-axis: hour. Y-axis: started sessions.",
 
     sourceDistribution: "Source Distribution",
     sourceDistributionSub: "Session share by provider.",
@@ -388,7 +388,6 @@ function pointsByKey(key: DrillChartKey, overview: OverviewStats, now: Date, loc
       return buildSharedHours(overview.shared_by_hour);
 
     case "peak_hours":
-    case "play_count_hour":
       return buildHours(overview.play_count_by_hour);
 
     default:
@@ -514,6 +513,7 @@ export function StatsPage() {
     {
       key: "sessions_day",
       kind: "sessions",
+      chartType: "bar",
       title: t.sessionsByDay,
       subtitle: t.sessionsByDaySub,
       points: buildByDay(overview.sessions_by_day, now, locale, (row) => row.sessions),
@@ -523,6 +523,7 @@ export function StatsPage() {
     {
       key: "sessions_week",
       kind: "sessions",
+      chartType: "area",
       title: t.sessionsByWeek,
       subtitle: t.sessionsByWeekSub,
       points: buildByWeek(overview.sessions_by_week, now, locale, (row) => row.sessions),
@@ -532,6 +533,7 @@ export function StatsPage() {
     {
       key: "sessions_month",
       kind: "sessions",
+      chartType: "area",
       title: t.sessionsByMonth,
       subtitle: t.sessionsByMonthSub,
       points: buildByMonth(overview.sessions_by_month, now, locale, (row) => row.sessions),
@@ -541,6 +543,7 @@ export function StatsPage() {
     {
       key: "sessions_year",
       kind: "sessions",
+      chartType: "bar",
       title: t.sessionsByYear,
       subtitle: t.sessionsByYearSub,
       points: buildByYear(overview.sessions_by_year, now, (row) => row.sessions),
@@ -551,6 +554,7 @@ export function StatsPage() {
     {
       key: "bandwidth_day",
       kind: "bandwidth",
+      chartType: "area",
       title: t.bandwidthByDay,
       subtitle: t.bandwidthByDaySub,
       points: buildByDay(overview.bandwidth_by_day, now, locale, (row) => row.avg_bandwidth_bps),
@@ -560,6 +564,7 @@ export function StatsPage() {
     {
       key: "bandwidth_week",
       kind: "bandwidth",
+      chartType: "area",
       title: t.bandwidthByWeek,
       subtitle: t.bandwidthByWeekSub,
       points: buildByWeek(overview.bandwidth_by_week, now, locale, (row) => row.avg_bandwidth_bps),
@@ -569,6 +574,7 @@ export function StatsPage() {
     {
       key: "bandwidth_month",
       kind: "bandwidth",
+      chartType: "area",
       title: t.bandwidthByMonth,
       subtitle: t.bandwidthByMonthSub,
       points: buildByMonth(overview.bandwidth_by_month, now, locale, (row) => row.avg_bandwidth_bps),
@@ -578,6 +584,7 @@ export function StatsPage() {
     {
       key: "bandwidth_year",
       kind: "bandwidth",
+      chartType: "area",
       title: t.bandwidthByYear,
       subtitle: t.bandwidthByYearSub,
       points: buildByYear(overview.bandwidth_by_year, now, (row) => row.avg_bandwidth_bps),
@@ -588,6 +595,7 @@ export function StatsPage() {
     {
       key: "shared_day",
       kind: "shared",
+      chartType: "bar",
       title: t.sharedByDay,
       subtitle: t.sharedByDaySub,
       points: buildByDay(overview.shared_by_day, now, locale, (row) => row.shared_bytes),
@@ -597,6 +605,7 @@ export function StatsPage() {
     {
       key: "shared_week",
       kind: "shared",
+      chartType: "area",
       title: t.sharedByWeek,
       subtitle: t.sharedByWeekSub,
       points: buildByWeek(overview.shared_by_week, now, locale, (row) => row.shared_bytes),
@@ -606,6 +615,7 @@ export function StatsPage() {
     {
       key: "shared_month",
       kind: "shared",
+      chartType: "area",
       title: t.sharedByMonth,
       subtitle: t.sharedByMonthSub,
       points: buildByMonth(overview.shared_by_month, now, locale, (row) => row.shared_bytes),
@@ -615,6 +625,7 @@ export function StatsPage() {
     {
       key: "shared_year",
       kind: "shared",
+      chartType: "bar",
       title: t.sharedByYear,
       subtitle: t.sharedByYearSub,
       points: buildByYear(overview.shared_by_year, now, (row) => row.shared_bytes),
@@ -625,6 +636,7 @@ export function StatsPage() {
     {
       key: "peak_hours",
       kind: "sessions",
+      chartType: "bar",
       title: t.peakHours,
       subtitle: t.peakHoursSub,
       points: buildHours(overview.play_count_by_hour),
@@ -632,17 +644,9 @@ export function StatsPage() {
       xAxis: t.xHour,
     },
     {
-      key: "play_count_hour",
-      kind: "sessions",
-      title: t.playCountHour,
-      subtitle: t.playCountHourSub,
-      points: buildHours(overview.play_count_by_hour),
-      yAxis: t.ySessions,
-      xAxis: t.xHour,
-    },
-    {
       key: "shared_hour",
       kind: "shared",
+      chartType: "bar",
       title: t.sharedByHour,
       subtitle: t.sharedByHourSub,
       points: buildSharedHours(overview.shared_by_hour),
@@ -691,9 +695,9 @@ export function StatsPage() {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <StatCard label={t.totalSessions} value={formatInt(overview.total_sessions)} hint={t.historical} />
         <StatCard label={t.activeNow} value={formatInt(overview.active_sessions)} hint={t.liveNow} />
-        <StatCard label={t.ended} value={formatInt(overview.ended_sessions)} hint={t.totalSessions} />
-        <StatCard label={t.stale} value={formatInt(overview.stale_sessions)} hint={t.totalSessions} />
         <StatCard label={t.totalShared} value={overview.total_shared_human} hint={t.cumulative} />
+        <StatCard label={t.uniqueUsers} value={formatInt(overview.unique_users)} hint={t.allTime} />
+        <StatCard label={t.totalWatchHours} value={`${overview.total_watch_hours.toLocaleString()} h`} hint={t.allTime} />
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -744,13 +748,22 @@ export function StatsPage() {
           return (
             <div key={chart.key} className="space-y-3">
               <ChartCard title={chart.title} subtitle={chart.subtitle} onClick={() => setSelectedChart(chart.key)} selected={isSelected}>
-                <VerticalBarChart
-                  points={chart.points}
-                  valueFormatter={renderValue(chart)}
-                  yAxisTitle={chart.yAxis}
-                  xAxisTitle={chart.xAxis}
-                  maxXTicks={chart.key.includes("hour") ? 8 : 12}
-                />
+                {chart.chartType === "area" ? (
+                  <AreaChart
+                    points={chart.points}
+                    valueFormatter={renderValue(chart)}
+                    yAxisTitle={chart.yAxis}
+                    xAxisTitle={chart.xAxis}
+                  />
+                ) : (
+                  <VerticalBarChart
+                    points={chart.points}
+                    valueFormatter={renderValue(chart)}
+                    yAxisTitle={chart.yAxis}
+                    xAxisTitle={chart.xAxis}
+                    maxXTicks={chart.key.includes("hour") ? 8 : 12}
+                  />
+                )}
               </ChartCard>
 
               <div

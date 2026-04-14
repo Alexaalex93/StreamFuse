@@ -170,12 +170,12 @@ export function MultiLineChart({
 
             {normalized.series.map((s) => {
               const d = s.points.map((p, idx) => `${idx === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
-              return <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth="0.42" />;
+              return <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth="0.25" strokeLinejoin="round" strokeLinecap="round" />;
             })}
 
             {normalized.series.map((s) =>
               s.points.map((p, idx) => (
-                <circle key={`${s.label}-${idx}`} cx={p.x} cy={p.y} r={hoverIndex === idx ? 0.55 : 0.32} fill={s.color} />
+                <circle key={`${s.label}-${idx}`} cx={p.x} cy={p.y} r={hoverIndex === idx ? 0.40 : 0.18} fill={s.color} />
               )),
             )}
           </svg>

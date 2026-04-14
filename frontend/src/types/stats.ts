@@ -14,6 +14,8 @@ export type OverviewStats = {
   active_sessions: number;
   ended_sessions: number;
   stale_sessions: number;
+  unique_users: number;
+  total_watch_hours: number;
   total_shared_bytes: number;
   total_shared_human: string;
   sessions_by_day: Array<{ day: string; sessions: number }>;
