@@ -122,6 +122,8 @@ const TEXT = {
     sourceDistributionSub: "Reparto de sesiones por proveedor.",
     topUsers: "Usuarios principales",
     topUsersSub: "Usuarios más activos por número de sesiones.",
+    topUsersBw: "Usuarios por ancho de banda",
+    topUsersBwSub: "Usuarios con mayor ancho de banda promedio por sesión.",
     playByWeekday: "Reproducciones por día de la semana",
     playByWeekdaySub: "Sesiones agregadas por día de la semana.",
     playByMedia: "Reproducciones por tipo de medio",
@@ -216,6 +218,8 @@ const TEXT = {
     sourceDistributionSub: "Session share by provider.",
     topUsers: "Top Users",
     topUsersSub: "Most active users by session count.",
+    topUsersBw: "Users by Bandwidth",
+    topUsersBwSub: "Users with highest average bandwidth per session.",
     playByWeekday: "Play Count by Weekday",
     playByWeekdaySub: "Aggregated sessions by weekday.",
     playByMedia: "Play Count by Media Type",
@@ -663,6 +667,15 @@ export function StatsPage() {
     hint: `${item.active_sessions} ${t.activeWord}`,
   }));
 
+  const userBwBars = users.items
+    .filter((item) => item.avg_bandwidth_bps != null && item.avg_bandwidth_bps > 0)
+    .sort((a, b) => (b.avg_bandwidth_bps ?? 0) - (a.avg_bandwidth_bps ?? 0))
+    .slice(0, 8)
+    .map((item) => ({
+      label: item.user_name,
+      value: item.avg_bandwidth_bps ?? 0,
+    }));
+
   const weekdayBars = overview.play_count_by_weekday.map((item) => ({ label: item.label, value: item.sessions }));
 
   const mediaRows = [
@@ -731,6 +744,10 @@ export function StatsPage() {
             yAxisTitle={t.ySessions}
             xAxisTitle={t.xDay}
           />
+        </ChartCard>
+
+        <ChartCard title={t.topUsersBw} subtitle={t.topUsersBwSub}>
+          <HorizontalBars items={userBwBars} valueFormatter={formatBps} />
         </ChartCard>
 
         <ChartCard title={t.topMovies} subtitle={t.topMoviesSub}>
