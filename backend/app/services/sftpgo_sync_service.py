@@ -170,6 +170,7 @@ class SFTPGoSyncService:
             ip_value = str(
                 connection.get("ip_address")
                 or connection.get("remote_address")
+                or connection.get("ip")  # SFTPGo API v2 uses "ip" (format "host:port")
                 or _best_log_field(related_logs, "ip_address")
                 or _best_log_field(related_logs, "remote_addr")
                 or ""
@@ -451,6 +452,17 @@ class SFTPGoSyncService:
         if conn_bytes_sent is not None or conn_bytes_received is not None:
             conn_total = (conn_bytes_sent or 0) + (conn_bytes_received or 0)
 
+        # SFTPGo API v2: bytes in progress are stored per-transfer as "size"
+        if conn_total is None:
+            transfer_bytes = 0
+            transfers = connection.get("active_transfers")
+            if isinstance(transfers, list):
+                for transfer in transfers:
+                    if isinstance(transfer, dict):
+                        transfer_bytes += _to_int(transfer.get("size")) or 0
+            if transfer_bytes > 0:
+                conn_total = transfer_bytes
+
         log_total = None
         for log in reversed(logs):
             bytes_total = _to_int(log.get("bytes_total"))
@@ -459,8 +471,13 @@ class SFTPGoSyncService:
                 break
             sent = _to_int(log.get("bytes_sent"))
             recv = _to_int(log.get("bytes_received"))
+            # SFTPGo FTP log format uses "size_bytes" for completed transfer size
+            size = _to_int(log.get("size_bytes"))
             if sent is not None or recv is not None:
                 log_total = (sent or 0) + (recv or 0)
+                break
+            if size is not None:
+                log_total = size
                 break
 
         return conn_total if conn_total is not None else log_total
@@ -523,7 +540,12 @@ class SFTPGoSyncService:
             for transfer in transfers:
                 if not isinstance(transfer, dict):
                     continue
-                candidate = transfer.get("path") or transfer.get("file_path")
+                # SFTPGo API v2 uses "virtual_path"; also accept "path"/"file_path" for compat
+                candidate = (
+                    transfer.get("virtual_path")
+                    or transfer.get("path")
+                    or transfer.get("file_path")
+                )
                 if candidate:
                     return str(candidate)
 
