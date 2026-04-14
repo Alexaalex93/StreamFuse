@@ -566,7 +566,13 @@ class StatsService:
                 for item in transfers:
                     if not isinstance(item, dict):
                         continue
-                    if str(item.get("operation_type") or "").lower() != "download":
+                    # SFTPGo API v2 uses type=1 for downloads (integer);
+                    # older/other adapters may use operation_type="download" (string)
+                    is_download = (
+                        item.get("type") == 1
+                        or str(item.get("operation_type") or "").lower() == "download"
+                    )
+                    if not is_download:
                         continue
                     size = _numeric(item.get("size"))
                     if size:
