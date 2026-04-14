@@ -101,11 +101,15 @@ class SFTPGoSyncService:
                 connection["streamfuse_logical_key"] = key
 
                 media_info = parse_mediainfo_for_media(media_path)
-                bandwidth_bps = (
+                mediainfo_bps = (
                     (media_info.overall_bitrate_bps or media_info.video_bitrate_bps)
                     if media_info is not None
                     else None
                 )
+                # Use actual delta-bytes/delta-time between polls when available;
+                # fall back to the file's encoded bitrate on the first poll.
+                live_bps = self._estimate_bandwidth_bps(source_session_id, connection, related_logs)
+                bandwidth_bps = live_bps if live_bps is not None else mediainfo_bps
                 poster = self.poster_resolver.resolve(media_path, None)
 
                 payload = build_sftpgo_session_payload(
