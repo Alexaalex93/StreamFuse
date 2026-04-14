@@ -323,8 +323,10 @@ class SFTPGoSyncService:
             if row.source_session_id in active_ids:
                 continue
 
-            updated_at = _as_utc(row.updated_at)
-            if updated_at and updated_at > stale_threshold:
+            # Treat NULL updated_at as "just updated now" — a freshly-created session
+            # that hasn't been touched yet should not be immediately marked stale.
+            updated_at = _as_utc(row.updated_at) or now
+            if updated_at > stale_threshold:
                 continue
 
             payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
@@ -715,14 +717,18 @@ class SFTPGoSyncService:
         if normalized_ip:
             merged["ip_address"] = normalized_ip
 
-        sent_total = (_to_int(current.get("bytes_sent")) or 0) + (
-            _to_int(incoming.get("bytes_sent")) or 0
+        # bytes_sent/bytes_received are cumulative counters from the SFTPGo API —
+        # each connection reports how many bytes it has transferred so far.
+        # Multiple connections for the same logical session are parallel TCP reconnects
+        # (e.g. Infuse re-connecting), so we take the MAX not the SUM.
+        merged["bytes_sent"] = max(
+            _to_int(current.get("bytes_sent")) or 0,
+            _to_int(incoming.get("bytes_sent")) or 0,
         )
-        recv_total = (_to_int(current.get("bytes_received")) or 0) + (
-            _to_int(incoming.get("bytes_received")) or 0
+        merged["bytes_received"] = max(
+            _to_int(current.get("bytes_received")) or 0,
+            _to_int(incoming.get("bytes_received")) or 0,
         )
-        merged["bytes_sent"] = sent_total
-        merged["bytes_received"] = recv_total
         return merged
 
     @staticmethod

@@ -17,13 +17,6 @@ import { FilterPanel } from "@/features/sessions/components/FilterPanel";
 import { MediaDetailsDrawer } from "@/features/sessions/components/MediaDetailsDrawer";
 import { SessionCard } from "@/features/sessions/components/SessionCard";
 
-function formatBandwidth(totalBps: number): string {
-  const mbps = totalBps / 1_000_000;
-  if (mbps < 1000) {
-    return `${mbps.toFixed(1)} Mbps`;
-  }
-  return `${(mbps / 1000).toFixed(2)} Gbps`;
-}
 
 function formatBytes(value: number | null | undefined): string {
   if (!value || value <= 0) {
@@ -496,7 +489,7 @@ export function DashboardPage() {
                 <StatCard label="CPU" value={formatPercent(systemMetrics.load.cpu_percent)} hint={systemMetrics.identity.cpu_model || "n/a"} />
                 <StatCard label="GPU" value={formatPercent(systemMetrics.load.gpu_percent)} hint={systemMetrics.identity.gpu_model || "n/a"} />
                 <StatCard label="RAM Used" value={formatBytes(systemMetrics.load.ram_used_bytes)} hint={`Free ${formatBytes(systemMetrics.load.ram_free_bytes)}`} />
-                <StatCard label="Outbound" value={formatBandwidth(Math.round(systemMetrics.network.outbound_bps ?? 0))} hint="Network out" />
+                <StatCard label="Outbound" value={formatTrafficRate(systemMetrics.network.outbound_bps ?? 0)} hint="Network out" />
                 <StatCard label="Power / Month" value={`${(systemMetrics.energy.power_watts ?? 0).toFixed(0)} W`} hint={formatMoney(systemMetrics.energy.estimated_month_cost_eur)} />
               </div>
 
