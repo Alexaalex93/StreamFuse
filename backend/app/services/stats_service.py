@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import os
 import re
 from zoneinfo import ZoneInfo
 
@@ -574,6 +575,7 @@ class StatsService:
         source = getattr(row, "source", None)
         status = getattr(row, "status", None)
         raw_payload = getattr(row, "raw_payload", None)
+        file_path = getattr(row, "file_path", None)
         started_at = getattr(row, "started_at", None)
         ended_at = getattr(row, "ended_at", None)
         updated_at = getattr(row, "updated_at", None)
@@ -583,12 +585,6 @@ class StatsService:
 
         if not isinstance(raw_payload, dict):
             raw_payload = {}
-
-        # Active sessions are still in progress — any estimate would be speculative
-        # and risks massive over-counting (e.g. inflated bandwidth_bps from a spike).
-        # Only count confirmed completed sessions.
-        if status == SessionStatus.ACTIVE:
-            return 0
 
         def _clamp_ratio(value: float | None) -> float | None:
             if value is None:
@@ -600,70 +596,94 @@ class StatsService:
                 return int(value)
             return None
 
-        # ── Connection-based sources (SFTPGo, Samba) ─────────────────────────
-        connection = raw_payload.get("connection")
+        # ── File-size cap ─────────────────────────────────────────────────────
+        # bytes_sent from SFTPGo or transfer.size from Samba can never exceed the
+        # actual file size.  Prefer the real on-disk size (covers any container
+        # format and quality level accurately); fall back to the mediainfo estimate
+        # (bitrate × duration × 1.10) for files that have moved or are remote.
+        _disk_size: int | None = None
+        if file_path:
+            try:
+                s = os.path.getsize(file_path)
+                if s > 0:
+                    _disk_size = s
+            except OSError:
+                pass
 
-        # Build a mediainfo-derived file size cap that applies to every path below.
-        # SFTPGo's bytes_sent can be inflated by the _merge_connections summing bug
-        # (now fixed for new sessions) or by Infuse seeking retransmissions, so we
-        # never allow more than 110 % of the encoded file size.
         mi = raw_payload.get("media_info") or {}
         _mi_bitrate = _numeric(mi.get("overall_bitrate_bps") or mi.get("video_bitrate_bps"))
         _mi_dur_ms = _numeric(mi.get("duration_ms"))
-        _mi_file_size_cap: int | None = (
+        _mi_size: int | None = (
             int((_mi_bitrate / 8.0) * (_mi_dur_ms / 1000.0) * 1.10)
             if _mi_bitrate and _mi_dur_ms and _mi_dur_ms > 0
             else None
         )
+        # Disk size is always preferred; mediainfo estimate is the fallback.
+        _file_size_cap: int | None = _disk_size or _mi_size
+
+        def _apply_cap(value: int) -> int:
+            if _file_size_cap and value > _file_size_cap:
+                return _file_size_cap
+            return value
+
+        # ── Connection-based sources (SFTPGo, Samba) ─────────────────────────
+        connection = raw_payload.get("connection")
 
         if isinstance(connection, dict):
-            # 1. Bytes reported directly at the connection level.
+            # 1. SFTPGo: bytes_sent is the real cumulative counter of bytes delivered
+            #    to the client over the network.  It is reliable for both ACTIVE and
+            #    ENDED sessions (the _merge_connections fix ensures it uses max, not
+            #    sum, so parallel Infuse reconnects don't double-count).
             conn_sent = _numeric(connection.get("bytes_sent"))
             if conn_sent:
-                if _mi_file_size_cap and conn_sent > _mi_file_size_cap:
-                    conn_sent = _mi_file_size_cap
-                if conn_sent > 0:
-                    return conn_sent
+                return _apply_cap(conn_sent)
 
-            # 2. Transfer size from non-SFTPGo adapters that use {"transfer": {"size": N}}.
-            transfer = raw_payload.get("transfer")
-            if isinstance(transfer, dict):
-                transfer_size = _numeric(transfer.get("size"))
-                if transfer_size:
-                    return transfer_size
+            # 2. Samba: the transfer dict carries the SMB open-file size, which is
+            #    the file size as reported by stat() — a reliable upper bound for
+            #    a completed session (you cannot read more than the file).
+            #    Skip for ACTIVE Samba sessions (no real bytes-read counter).
+            if status != SessionStatus.ACTIVE:
+                transfer = raw_payload.get("transfer")
+                if isinstance(transfer, dict):
+                    transfer_size = _numeric(transfer.get("size"))
+                    if transfer_size:
+                        return _apply_cap(transfer_size)
 
-            # 3. SFTPGo logs: sum of size_bytes from completed "Download" events.
-            # This is the most accurate source — each entry records a completed segment.
-            logs = raw_payload.get("logs")
-            if isinstance(logs, list):
-                log_bytes = sum(
-                    _numeric(log.get("size_bytes")) or 0
-                    for log in logs
-                    if isinstance(log, dict)
-                    and str(log.get("sender") or "").lower() == "download"
-                )
-                if log_bytes > 0:
-                    return log_bytes
-
-            # 4. active_transfers: last resort for ended sessions.
-            # WARNING: in some SFTPGo versions .size may be the total file size rather
-            # than bytes transferred, so we trust it only when the session has ended and
-            # logs provided nothing.
-            transfers = connection.get("active_transfers")
-            if isinstance(transfers, list):
-                total_transfer = sum(
-                    _numeric(item.get("size")) or 0
-                    for item in transfers
-                    if isinstance(item, dict)
-                    and (
-                        item.get("type") == 1
-                        or str(item.get("operation_type") or "").lower() == "download"
+                # 3. SFTPGo logs: sum of size_bytes from completed "Download" events.
+                #    Most accurate — each log entry records one completed transfer segment.
+                logs = raw_payload.get("logs")
+                if isinstance(logs, list):
+                    log_bytes = sum(
+                        _numeric(log.get("size_bytes")) or 0
+                        for log in logs
+                        if isinstance(log, dict)
+                        and str(log.get("sender") or "").lower() == "download"
                     )
-                )
-                if total_transfer > 0:
-                    return total_transfer
+                    if log_bytes > 0:
+                        return _apply_cap(log_bytes)
+
+                # 4. active_transfers[].size — last resort for ended sessions only.
+                #    Unreliable: some SFTPGo versions report total file size here,
+                #    not bytes transferred.
+                transfers = connection.get("active_transfers")
+                if isinstance(transfers, list):
+                    total_transfer = sum(
+                        _numeric(item.get("size")) or 0
+                        for item in transfers
+                        if isinstance(item, dict)
+                        and (
+                            item.get("type") == 1
+                            or str(item.get("operation_type") or "").lower() == "download"
+                        )
+                    )
+                    if total_transfer > 0:
+                        return _apply_cap(total_transfer)
 
         # ── Tautulli (file_size × watch ratio) ───────────────────────────────
+        # Skip ACTIVE Tautulli sessions — progress_percent mid-stream is unreliable.
+        if status == SessionStatus.ACTIVE:
+            return 0
+
         file_size = _numeric(raw_payload.get("file_size"))
 
         ratio: float | None = None
@@ -677,25 +697,19 @@ class StatsService:
         if file_size:
             if ratio is not None and ratio > 0:
                 return int(file_size * ratio)
-            # For a fully confirmed ended Tautulli session with no ratio: use file_size.
+            # Fully completed Tautulli session with no ratio → count full file.
             if source == StreamSource.TAUTULLI and status == SessionStatus.ENDED:
                 return file_size
 
         # ── Bandwidth estimate fallback (least reliable) ──────────────────────
-        # Use only actual ended_at / updated_at — never datetime.now() — to avoid
-        # inflating active session estimates if they slip through.
+        # Only for ended/stale sessions.  Use ended_at / updated_at, never now().
         if bandwidth_bps and started_at:
             end_ref = ended_at or updated_at
             if end_ref and end_ref > started_at:
                 elapsed_sec = (end_ref - started_at).total_seconds()
-                # Cap bandwidth to 1 Gbps; spikes from active_transfers inflation cannot
-                # produce absurd totals (e.g. 45 GB/s recorded for a 1-second delta).
                 capped_bps = min(float(bandwidth_bps), 1_000_000_000.0)
                 estimate = int((capped_bps / 8.0) * elapsed_sec)
-                # Further cap by mediainfo file size so a 20 Mbps video with a 2-hour
-                # session doesn't show 72 GB because bandwidth_bps had a seek spike.
-                if _mi_file_size_cap and estimate > _mi_file_size_cap:
-                    estimate = _mi_file_size_cap
+                estimate = _apply_cap(estimate)
                 if file_size:
                     return max(0, min(file_size, estimate))
                 if estimate > 0:
