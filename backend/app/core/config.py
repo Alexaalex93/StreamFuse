@@ -19,13 +19,13 @@ class Settings(BaseSettings):
     sftpgo_base_url: str = "http://localhost:8080"
     sftpgo_api_key: str = "changeme"
     sftpgo_use_mock: bool = True
-    sftpgo_transfer_log_json_path: str = ""
+    sftpgo_transfer_log_json_path: str = "/data/sftp-logs/transfers.jsonl"
     sftpgo_path_mappings: str = ""
     sftpgo_stale_seconds: int = 1200
     sftpgo_log_limit: int = 200
 
-    samba_enabled: bool = False
-    samba_status_json_path: str = ""
+    samba_enabled: bool = True
+    samba_status_json_path: str = "/data/samba-status.json"
     samba_path_mappings: str = ""
     samba_stale_seconds: int = 1200
 

@@ -127,12 +127,12 @@ class SettingsService:
                 )
             ),
             unraid_metrics_enabled=self._parse_bool(
-                self._value_or_default(by_key, self.KEY_UNRAID_METRICS_ENABLED, "false")
+                self._value_or_default(by_key, self.KEY_UNRAID_METRICS_ENABLED, "true")
             ),
             unraid_metrics_json_path=self._value_or_default(
                 by_key,
                 self.KEY_UNRAID_METRICS_JSON_PATH,
-                "",
+                "/data/unraid-metrics.json",
             )
             or None,
             use_unraid_totals=self._parse_bool(
