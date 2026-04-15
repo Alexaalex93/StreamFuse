@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 from zoneinfo import ZoneInfo
 
@@ -56,6 +57,8 @@ class StatsService:
         aggregate_rows = self.db.execute(
             select(
                 UnifiedStreamSessionModel.started_at,
+                UnifiedStreamSessionModel.user_name,
+                UnifiedStreamSessionModel.file_path,
                 UnifiedStreamSessionModel.bandwidth_bps,
             ).where(*self._where(filters))
         ).all()
@@ -70,6 +73,11 @@ class StatsService:
         bandwidth_month_acc: dict[str, list[float]] = {}
         bandwidth_year_acc: dict[str, list[float]] = {}
 
+        # Dedup tracker: same user watching same file on the same day counts as ONE view.
+        # This prevents Infuse FTP reconnects (which SFTPGo reports as separate connections)
+        # from inflating session counts in trend charts.
+        seen_view_keys: set[str] = set()
+
         for row in aggregate_rows:
             local_dt = self._to_local_datetime(row.started_at)
             if local_dt is None:
@@ -80,10 +88,16 @@ class StatsService:
             month_key = local_dt.strftime("%Y-%m")
             year_key = local_dt.strftime("%Y")
 
-            sessions_by_day[day_key] = sessions_by_day.get(day_key, 0) + 1
-            sessions_by_week[week_key] = sessions_by_week.get(week_key, 0) + 1
-            sessions_by_month[month_key] = sessions_by_month.get(month_key, 0) + 1
-            sessions_by_year[year_key] = sessions_by_year.get(year_key, 0) + 1
+            # One unique view = one (user, file, day) combination
+            view_key = f"{row.user_name or ''}|{row.file_path or ''}|{day_key}"
+            is_new_view = view_key not in seen_view_keys
+            seen_view_keys.add(view_key)
+
+            if is_new_view:
+                sessions_by_day[day_key] = sessions_by_day.get(day_key, 0) + 1
+                sessions_by_week[week_key] = sessions_by_week.get(week_key, 0) + 1
+                sessions_by_month[month_key] = sessions_by_month.get(month_key, 0) + 1
+                sessions_by_year[year_key] = sessions_by_year.get(year_key, 0) + 1
 
             if row.bandwidth_bps is not None:
                 value = float(row.bandwidth_bps)
@@ -182,23 +196,53 @@ class StatsService:
         distribution_rows = self.db.execute(
             select(
                 UnifiedStreamSessionModel.started_at,
+                UnifiedStreamSessionModel.ended_at,
+                UnifiedStreamSessionModel.updated_at,
+                UnifiedStreamSessionModel.user_name,
+                UnifiedStreamSessionModel.file_path,
                 UnifiedStreamSessionModel.client_name,
                 UnifiedStreamSessionModel.player_name,
                 UnifiedStreamSessionModel.media_type,
             ).where(*self._where(filters))
         ).all()
 
+        # hourly_active tracks unique (user, file) pairs per hour so that:
+        # - Infuse reconnects (multiple sessions, same file, same hour) count once
+        # - Sessions are spread across all hours they were active, not just the start hour
+        hourly_active: dict[int, set[str]] = defaultdict(set)
+
         for row in distribution_rows:
-            local_dt = self._to_local_datetime(row.started_at)
-            if local_dt:
-                weekday_counts[local_dt.weekday()] += 1
-                hour_counts[local_dt.hour] += 1
+            local_start = self._to_local_datetime(row.started_at)
+            if local_start is None:
+                continue
+
+            weekday_counts[local_start.weekday()] += 1
 
             platform = self._platform_name(row.client_name, row.player_name)
             platform_counts[platform] = platform_counts.get(platform, 0) + 1
 
             media_key = self._media_type_bucket(row.media_type)
             media_type_counts[media_key] = media_type_counts.get(media_key, 0) + 1
+
+            # Determine effective end time for this session.
+            # Cap at 6 hours to avoid a single anomalous row dominating the chart.
+            local_end = (
+                self._to_local_datetime(row.ended_at)
+                or self._to_local_datetime(row.updated_at)
+                or (local_start + timedelta(minutes=30))
+            )
+            local_end = min(local_end, local_start + timedelta(hours=6))
+
+            # Dedup key: same user + same file → one active viewer in any given hour
+            dedup_key = f"{row.user_name or ''}|{row.file_path or ''}"
+
+            current_hour = local_start.replace(minute=0, second=0, microsecond=0)
+            while current_hour <= local_end:
+                h = current_hour.hour
+                if dedup_key not in hourly_active[h]:
+                    hourly_active[h].add(dedup_key)
+                    hour_counts[h] += 1
+                current_hour += timedelta(hours=1)
 
         play_count_by_platform = [
             {"label": key, "sessions": value}
@@ -558,11 +602,28 @@ class StatsService:
 
         # ── Connection-based sources (SFTPGo, Samba) ─────────────────────────
         connection = raw_payload.get("connection")
+
+        # Build a mediainfo-derived file size cap that applies to every path below.
+        # SFTPGo's bytes_sent can be inflated by the _merge_connections summing bug
+        # (now fixed for new sessions) or by Infuse seeking retransmissions, so we
+        # never allow more than 110 % of the encoded file size.
+        mi = raw_payload.get("media_info") or {}
+        _mi_bitrate = _numeric(mi.get("overall_bitrate_bps") or mi.get("video_bitrate_bps"))
+        _mi_dur_ms = _numeric(mi.get("duration_ms"))
+        _mi_file_size_cap: int | None = (
+            int((_mi_bitrate / 8.0) * (_mi_dur_ms / 1000.0) * 1.10)
+            if _mi_bitrate and _mi_dur_ms and _mi_dur_ms > 0
+            else None
+        )
+
         if isinstance(connection, dict):
             # 1. Bytes reported directly at the connection level.
             conn_sent = _numeric(connection.get("bytes_sent"))
             if conn_sent:
-                return conn_sent
+                if _mi_file_size_cap and conn_sent > _mi_file_size_cap:
+                    conn_sent = _mi_file_size_cap
+                if conn_sent > 0:
+                    return conn_sent
 
             # 2. Transfer size from non-SFTPGo adapters that use {"transfer": {"size": N}}.
             transfer = raw_payload.get("transfer")
@@ -631,6 +692,10 @@ class StatsService:
                 # produce absurd totals (e.g. 45 GB/s recorded for a 1-second delta).
                 capped_bps = min(float(bandwidth_bps), 1_000_000_000.0)
                 estimate = int((capped_bps / 8.0) * elapsed_sec)
+                # Further cap by mediainfo file size so a 20 Mbps video with a 2-hour
+                # session doesn't show 72 GB because bandwidth_bps had a seek spike.
+                if _mi_file_size_cap and estimate > _mi_file_size_cap:
+                    estimate = _mi_file_size_cap
                 if file_size:
                     return max(0, min(file_size, estimate))
                 if estimate > 0:
