@@ -581,7 +581,7 @@ export function DashboardPage() {
             <p className="text-sm text-fg-muted">{tx.sysWaiting}</p>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <StatCard label={tx.cpu} value={formatPercent(systemMetrics.load.cpu_percent)} hint={systemMetrics.identity.cpu_model || "n/a"} />
                 <StatCard label={tx.gpu} value={formatPercent(systemMetrics.load.gpu_percent)} hint={systemMetrics.identity.gpu_model || "n/a"} />
                 <StatCard label={tx.ramUsed} value={formatBytes(systemMetrics.load.ram_used_bytes)} hint={`Free ${formatBytes(systemMetrics.load.ram_free_bytes)}`} />

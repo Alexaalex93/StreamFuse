@@ -153,8 +153,6 @@ export function AppShell({ currentSection, onChangeSection, onLogout, language, 
                 <p className="text-xs text-fg-muted">{t(language, "header.subtitle")}</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button variant="ghost" disabled title={t(language, "header.disabled")}>{t(language, "header.refresh")}</Button>
-                <Button variant="default" disabled title={t(language, "header.disabled")}>{t(language, "header.newFilter")}</Button>
                 <Button variant="outline" onClick={onLogout}>{t(language, "header.logout")}</Button>
               </div>
             </div>
