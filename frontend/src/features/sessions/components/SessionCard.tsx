@@ -1,9 +1,35 @@
+import { useEffect, useState } from "react";
+
 import { getBackendBase } from "@/shared/api/client";
 import { formatLocalTime } from "@/shared/lib/date";
+import { getStoredLanguage, UiLanguage } from "@/shared/lib/i18n";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { UnifiedSession } from "@/types/session";
 
 import { BandwidthBadge } from "./BandwidthBadge";
+
+const CARD_TEXT = {
+  es: {
+    type: "TIPO",
+    start: "INICIO",
+    player: "REPRODUCTOR",
+    quality: "CALIDAD",
+    stream: "STREAM",
+    ip: "IP",
+    series: "serie",
+    untitled: "Sin titulo",
+  },
+  en: {
+    type: "TYPE",
+    start: "START",
+    player: "PLAYER",
+    quality: "QUALITY",
+    stream: "STREAM",
+    ip: "IP",
+    series: "series",
+    untitled: "Untitled",
+  },
+} as const;
 
 type SessionCardProps = {
   session: UnifiedSession;
@@ -114,6 +140,14 @@ function extractBitrate(session: UnifiedSession): string {
 
 
 export function SessionCard({ session, onOpen }: SessionCardProps) {
+  const [lang, setLang] = useState<UiLanguage>(getStoredLanguage());
+  useEffect(() => {
+    const handler = (e: Event) => setLang((e as CustomEvent<{ language: UiLanguage }>).detail.language);
+    window.addEventListener("streamfuse:language-changed", handler);
+    return () => window.removeEventListener("streamfuse:language-changed", handler);
+  }, []);
+  const tx = CARD_TEXT[lang];
+
   const backend = getBackendBase();
   const posterSrc = `${backend}/api/v1/posters/${session.id}?variant=poster&width=1000&height=1500`;
   const fanartSrc = `${backend}/api/v1/posters/${session.id}?variant=fanart&width=1920&height=1080`;
@@ -163,12 +197,12 @@ export function SessionCard({ session, onOpen }: SessionCardProps) {
             </div>
 
             <div className="grid grid-cols-[76px_1fr] gap-x-2 gap-y-1 text-[0.8rem] leading-4 text-fg-muted">
-              <span className="text-fg-muted/85">TYPE</span><span className="truncate">{mediaTypeLabel(session)}</span>
-              <span className="text-fg-muted/85">START</span><span>{formatLocalTime(session.started_at)}</span>
-              <span className="text-fg-muted/85">PLAYER</span><span className="truncate">{session.player_name || session.client_name || "n/a"}</span>
-              <span className="text-fg-muted/85">QUALITY</span><span>{session.resolution || "n/a"}</span>
-              <span className="text-fg-muted/85">STREAM</span><span className="truncate">{session.transcode_decision || "n/a"}</span>
-              <span className="text-fg-muted/85">IP</span><span className="truncate">{session.ip_address || "n/a"}</span>
+              <span className="text-fg-muted/85">{tx.type}</span><span className="truncate">{session.media_type === "episode" ? tx.series : (session.media_type || "other")}</span>
+              <span className="text-fg-muted/85">{tx.start}</span><span>{formatLocalTime(session.started_at)}</span>
+              <span className="text-fg-muted/85">{tx.player}</span><span className="truncate">{session.player_name || session.client_name || "n/a"}</span>
+              <span className="text-fg-muted/85">{tx.quality}</span><span>{session.resolution || "n/a"}</span>
+              <span className="text-fg-muted/85">{tx.stream}</span><span className="truncate">{session.transcode_decision || "n/a"}</span>
+              <span className="text-fg-muted/85">{tx.ip}</span><span className="truncate">{session.ip_address || "n/a"}</span>
             </div>
           </div>
         </div>

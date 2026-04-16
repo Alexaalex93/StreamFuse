@@ -4,11 +4,69 @@ import { UnifiedSession } from "@/types/session";
 
 import { getBackendBase } from "@/shared/api/client";
 import { formatLocalDateTime } from "@/shared/lib/date";
+import { getStoredLanguage, UiLanguage } from "@/shared/lib/i18n";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { Button } from "@/shared/ui/button";
 
 import { BandwidthBadge } from "./BandwidthBadge";
 import { ProgressBar } from "./ProgressBar";
+
+const TEXT = {
+  es: {
+    sessionDetails: "Detalles de sesion",
+    close: "Cerrar",
+    untitled: "Sesion sin titulo",
+    untitledShort: "Sin titulo",
+    techSnapshot: "Datos tecnicos",
+    type: "Tipo",
+    ip: "IP",
+    resolution: "Resolucion",
+    videoCodec: "Codec de video",
+    audioCodec: "Codec de audio",
+    transcode: "Transcodificacion",
+    bitrate: "Bitrate",
+    client: "Cliente",
+    player: "Reproductor",
+    timeline: "Linea de tiempo",
+    started: "Inicio",
+    ended: "Fin",
+    updated: "Actualizado",
+    path: "Ruta",
+    relatedSessions: "Sesiones relacionadas",
+    debugPayload: "Payload de depuracion",
+    debugEnable: "Activar modo depuracion para ver el payload del proveedor.",
+    hide: "Ocultar",
+    show: "Mostrar",
+    series: "SERIES",
+  },
+  en: {
+    sessionDetails: "Session Details",
+    close: "Close",
+    untitled: "Untitled session",
+    untitledShort: "Untitled",
+    techSnapshot: "Technical Snapshot",
+    type: "Type",
+    ip: "IP",
+    resolution: "Resolution",
+    videoCodec: "Video codec",
+    audioCodec: "Audio codec",
+    transcode: "Transcode",
+    bitrate: "Bitrate",
+    client: "Client",
+    player: "Player",
+    timeline: "Timeline",
+    started: "Started",
+    ended: "Ended",
+    updated: "Updated",
+    path: "Path",
+    relatedSessions: "Related Sessions",
+    debugPayload: "Debug Payload",
+    debugEnable: "Enable debug mode to inspect original provider payload.",
+    hide: "Hide",
+    show: "Show",
+    series: "SERIES",
+  },
+} as const;
 
 const FALLBACK_POSTER =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect width='100%25' height='100%25' fill='%23111b2f'/><text x='50%25' y='50%25' fill='%2394a3b8' font-size='18' text-anchor='middle' dominant-baseline='middle'>No poster</text></svg>";
@@ -65,13 +123,6 @@ function upperValue(value: string | number | null | undefined, uppercase = true)
   return uppercase ? text.toUpperCase() : text;
 }
 
-
-function detailsMediaType(session: UnifiedSession): string {
-  if (session.media_type === "episode") {
-    return "SERIES";
-  }
-  return upperValue(session.media_type);
-}
 type MediaDetailsDrawerProps = {
   open: boolean;
   session: UnifiedSession | null;
@@ -80,6 +131,14 @@ type MediaDetailsDrawerProps = {
 };
 
 export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: MediaDetailsDrawerProps) {
+  const [lang, setLang] = useState<UiLanguage>(getStoredLanguage());
+  useEffect(() => {
+    const handler = (e: Event) => setLang((e as CustomEvent<{ language: UiLanguage }>).detail.language);
+    window.addEventListener("streamfuse:language-changed", handler);
+    return () => window.removeEventListener("streamfuse:language-changed", handler);
+  }, []);
+  const tx = TEXT[lang];
+
   const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
@@ -92,6 +151,13 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
     }
     return `${getBackendBase()}/api/v1/posters/${session.id}?variant=poster&width=1000&height=1500`;
   }, [session]);
+
+  function detailsMediaType(s: UnifiedSession): string {
+    if (s.media_type === "episode") {
+      return tx.series;
+    }
+    return upperValue(s.media_type);
+  }
 
   return (
     <>
@@ -108,9 +174,9 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
         {!session ? null : (
           <div className="flex h-full flex-col">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-xl text-white">Session Details</h3>
+              <h3 className="font-display text-xl text-white">{tx.sessionDetails}</h3>
               <Button variant="ghost" onClick={onClose}>
-                Close
+                {tx.close}
               </Button>
             </div>
 
@@ -129,7 +195,7 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
               <div className="mt-4 flex items-start justify-between gap-4">
                 <div>
                   <h4 className="font-display text-2xl leading-tight text-white">
-                    {session.title || session.file_name || "Untitled session"}
+                    {session.title || session.file_name || tx.untitled}
                   </h4>
                   <p className="mt-1 text-sm text-fg-muted">{session.user_name}</p>
                 </div>
@@ -137,17 +203,17 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
               </div>
 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4">
-                <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Technical Snapshot</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">{tx.techSnapshot}</p>
                 <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-fg-muted">
-                  <p><span className="text-white">Type:</span> {detailsMediaType(session)}</p>
-                  <p><span className="text-white">IP:</span> {upperValue(session.ip_address)}</p>
-                  <p><span className="text-white">Resolution:</span> {upperValue(session.resolution)}</p>
-                  <p><span className="text-white">Video codec:</span> {upperValue(session.video_codec)}</p>
-                  <p><span className="text-white">Audio codec:</span> {upperValue(session.audio_codec)}</p>
-                  <p><span className="text-white">Transcode:</span> {upperValue(session.transcode_decision)}</p>
-                  <p><span className="text-white">Bitrate:</span> {formatSessionBitrate(session)}</p>
-                  <p><span className="text-white">Client:</span> {upperValue(session.client_name, false)}</p>
-                  <p><span className="text-white">Player:</span> {upperValue(session.player_name, false)}</p>
+                  <p><span className="text-white">{tx.type}:</span> {detailsMediaType(session)}</p>
+                  <p><span className="text-white">{tx.ip}:</span> {upperValue(session.ip_address)}</p>
+                  <p><span className="text-white">{tx.resolution}:</span> {upperValue(session.resolution)}</p>
+                  <p><span className="text-white">{tx.videoCodec}:</span> {upperValue(session.video_codec)}</p>
+                  <p><span className="text-white">{tx.audioCodec}:</span> {upperValue(session.audio_codec)}</p>
+                  <p><span className="text-white">{tx.transcode}:</span> {upperValue(session.transcode_decision)}</p>
+                  <p><span className="text-white">{tx.bitrate}:</span> {formatSessionBitrate(session)}</p>
+                  <p><span className="text-white">{tx.client}:</span> {upperValue(session.client_name, false)}</p>
+                  <p><span className="text-white">{tx.player}:</span> {upperValue(session.player_name, false)}</p>
                 </div>
 
                 <div className="mt-3">
@@ -160,27 +226,27 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
               </div>
 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4 text-xs text-fg-muted">
-                <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Timeline</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">{tx.timeline}</p>
                 <div className="mt-3 space-y-1">
-                  <p><span className="text-white">Started:</span> {formatLocalDateTime(session.started_at)}</p>
-                  <p><span className="text-white">Ended:</span> {formatLocalDateTime(session.ended_at)}</p>
-                  <p><span className="text-white">Updated:</span> {formatLocalDateTime(session.updated_at)}</p>
+                  <p><span className="text-white">{tx.started}:</span> {formatLocalDateTime(session.started_at)}</p>
+                  <p><span className="text-white">{tx.ended}:</span> {formatLocalDateTime(session.ended_at)}</p>
+                  <p><span className="text-white">{tx.updated}:</span> {formatLocalDateTime(session.updated_at)}</p>
                 </div>
               </div>
 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4 text-xs text-fg-muted">
-                <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Path</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">{tx.path}</p>
                 <p className="mt-2 break-all rounded-lg bg-white/[0.03] px-2 py-2 text-fg">{session.file_path || "n/a"}</p>
               </div>
 
               {relatedSessions.length > 0 ? (
                 <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4">
-                  <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Related Sessions</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">{tx.relatedSessions}</p>
                   <div className="mt-2 space-y-2">
                     {relatedSessions.slice(0, 4).map((item) => (
                       <div key={`${item.source}-${item.source_session_id}`} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm text-white">{item.title || item.file_name || "Untitled"}</p>
+                          <p className="truncate text-sm text-white">{item.title || item.file_name || tx.untitledShort}</p>
                           <p className="text-xs text-fg-muted">{item.user_name}</p>
                         </div>
                         <SourceBadge source={item.source} />
@@ -192,9 +258,9 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
 
               <div className="mt-4 rounded-xl border border-white/10 bg-card/70 p-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">Debug Payload</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-fg-muted">{tx.debugPayload}</p>
                   <Button variant="ghost" onClick={() => setShowDebug((value) => !value)}>
-                    {showDebug ? "Hide" : "Show"}
+                    {showDebug ? tx.hide : tx.show}
                   </Button>
                 </div>
 
@@ -203,7 +269,7 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
                     {JSON.stringify(session.raw_payload, null, 2)}
                   </pre>
                 ) : (
-                  <p className="text-xs text-fg-muted">Enable debug mode to inspect original provider payload.</p>
+                  <p className="text-xs text-fg-muted">{tx.debugEnable}</p>
                 )}
               </div>
             </div>
@@ -213,5 +279,3 @@ export function MediaDetailsDrawer({ open, session, relatedSessions, onClose }: 
     </>
   );
 }
-
-

@@ -1,11 +1,59 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { UnifiedSession } from "@/types/session";
 
+import { getStoredLanguage, UiLanguage } from "@/shared/lib/i18n";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 
 import { BandwidthBadge } from "@/features/sessions/components/BandwidthBadge";
 import { PosterCard } from "@/features/sessions/components/PosterCard";
+
+const TEXT = {
+  es: {
+    colSession: "Sesion",
+    colUser: "Usuario",
+    colSource: "Fuente",
+    colMedia: "Tipo",
+    colEnded: "Fin",
+    colBandwidth: "Ancho de banda",
+    colAction: "Accion",
+    hide: "Ocultar",
+    details: "Detalles",
+    started: "Inicio",
+    updated: "Actualizado",
+    ip: "IP",
+    status: "Estado",
+    resolution: "Resolucion",
+    transcode: "Transcodificacion",
+    video: "Video",
+    audio: "Audio",
+    bandwidth: "Ancho de banda",
+    series: "serie",
+    untitled: "Sin titulo",
+  },
+  en: {
+    colSession: "Session",
+    colUser: "User",
+    colSource: "Source",
+    colMedia: "Media",
+    colEnded: "Ended",
+    colBandwidth: "Bandwidth",
+    colAction: "Action",
+    hide: "Hide",
+    details: "Details",
+    started: "Started",
+    updated: "Updated",
+    ip: "IP",
+    status: "Status",
+    resolution: "Resolution",
+    transcode: "Transcode",
+    video: "Video",
+    audio: "Audio",
+    bandwidth: "Bandwidth",
+    series: "series",
+    untitled: "Untitled",
+  },
+} as const;
 
 type HistoryTableProps = {
   sessions: UnifiedSession[];
@@ -21,9 +69,9 @@ function fmt(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "n/a" : date.toLocaleString();
 }
 
-function mediaLabel(session: UnifiedSession): string {
+function mediaLabel(session: UnifiedSession, seriesWord: string): string {
   if (session.media_type === "episode") {
-    return "series";
+    return seriesWord;
   }
   return session.media_type;
 }
@@ -40,11 +88,11 @@ function episodeCode(session: UnifiedSession): string | null {
   return `${s}${e}` || null;
 }
 
-function rowTitle(session: UnifiedSession): string {
+function rowTitle(session: UnifiedSession, untitled: string): string {
   if (session.media_type === "episode") {
-    return session.series_title || session.title || session.file_name || "Untitled";
+    return session.series_title || session.title || session.file_name || untitled;
   }
-  return session.title || session.file_name || "Untitled";
+  return session.title || session.file_name || untitled;
 }
 
 function rowSubtitle(session: UnifiedSession): string {
@@ -118,18 +166,26 @@ function extractBitrateText(session: UnifiedSession): string {
 }
 
 export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
+  const [lang, setLang] = useState<UiLanguage>(getStoredLanguage());
+  useEffect(() => {
+    const handler = (e: Event) => setLang((e as CustomEvent<{ language: UiLanguage }>).detail.language);
+    window.addEventListener("streamfuse:language-changed", handler);
+    return () => window.removeEventListener("streamfuse:language-changed", handler);
+  }, []);
+  const tx = TEXT[lang];
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10 bg-card shadow-premium">
       <table className="min-w-[900px] w-full table-auto text-sm">
         <thead className="bg-white/[0.03] text-left text-fg-muted">
           <tr>
-            <th className="px-3 py-3 font-medium">Session</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">User</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">Source</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">Media</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">Ended</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">Bandwidth</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">Action</th>
+            <th className="px-3 py-3 font-medium">{tx.colSession}</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colUser}</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colSource}</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colMedia}</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colEnded}</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colBandwidth}</th>
+            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colAction}</th>
           </tr>
         </thead>
         <tbody>
@@ -141,12 +197,12 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
               <Fragment key={session.id}>
                 <tr className="border-t border-white/10 align-top">
                   <td className="px-3 py-3">
-                    <p className="break-words font-medium text-white">{rowTitle(session)}</p>
+                    <p className="break-words font-medium text-white">{rowTitle(session, tx.untitled)}</p>
                     <p className="mt-1 break-all text-xs text-fg-muted">{rowSubtitle(session)}</p>
                   </td>
                   <td className="px-3 py-3 text-fg whitespace-nowrap">{session.user_name}</td>
                   <td className="px-3 py-3 whitespace-nowrap"><SourceBadge source={session.source} /></td>
-                  <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{mediaLabel(session)}</td>
+                  <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{mediaLabel(session, tx.series)}</td>
                   <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{fmt(session.ended_at || session.updated_at)}</td>
                   <td className="px-3 py-3 whitespace-nowrap"><BandwidthBadge bandwidthBps={session.bandwidth_bps} text={bitrateText} /></td>
                   <td className="px-3 py-3 whitespace-nowrap">
@@ -155,7 +211,7 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                       className="rounded-lg border border-white/15 px-3 py-1 text-xs text-fg-muted transition hover:bg-white/[0.06]"
                       onClick={() => onToggleExpand(session.id)}
                     >
-                      {expanded ? "Hide" : "Details"}
+                      {expanded ? tx.hide : tx.details}
                     </button>
                   </td>
                 </tr>
@@ -172,15 +228,15 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                         />
                         <div className="min-h-[280px] flex-1 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs text-fg-muted">
                           <div className="grid grid-cols-2 gap-2">
-                            <p><span className="text-white">Started:</span> {fmt(session.started_at)}</p>
-                            <p><span className="text-white">Updated:</span> {fmt(session.updated_at)}</p>
-                            <p><span className="text-white">IP:</span> {session.ip_address || "n/a"}</p>
-                            <p><span className="text-white">Status:</span> {session.status}</p>
-                            <p><span className="text-white">Resolution:</span> {session.resolution || "n/a"}</p>
-                            <p><span className="text-white">Transcode:</span> {session.transcode_decision || "n/a"}</p>
-                            <p><span className="text-white">Video:</span> {session.video_codec || "n/a"}</p>
-                            <p><span className="text-white">Audio:</span> {session.audio_codec || "n/a"}</p>
-                            <p><span className="text-white">Bandwidth:</span> {bitrateText}</p>
+                            <p><span className="text-white">{tx.started}:</span> {fmt(session.started_at)}</p>
+                            <p><span className="text-white">{tx.updated}:</span> {fmt(session.updated_at)}</p>
+                            <p><span className="text-white">{tx.ip}:</span> {session.ip_address || "n/a"}</p>
+                            <p><span className="text-white">{tx.status}:</span> {session.status}</p>
+                            <p><span className="text-white">{tx.resolution}:</span> {session.resolution || "n/a"}</p>
+                            <p><span className="text-white">{tx.transcode}:</span> {session.transcode_decision || "n/a"}</p>
+                            <p><span className="text-white">{tx.video}:</span> {session.video_codec || "n/a"}</p>
+                            <p><span className="text-white">{tx.audio}:</span> {session.audio_codec || "n/a"}</p>
+                            <p><span className="text-white">{tx.bandwidth}:</span> {bitrateText}</p>
                           </div>
                           <p className="mt-3 break-all rounded-lg bg-white/[0.03] px-2 py-2 text-fg">{session.file_path || "n/a"}</p>
                         </div>
@@ -196,5 +252,3 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
     </div>
   );
 }
-
-

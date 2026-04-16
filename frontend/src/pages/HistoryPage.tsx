@@ -4,6 +4,7 @@ import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
 
 import { apiGet } from "@/shared/api/client";
+import { getStoredLanguage, UiLanguage } from "@/shared/lib/i18n";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/states/EmptyState";
@@ -14,6 +15,39 @@ import { PosterCard } from "@/features/sessions/components/PosterCard";
 
 import { HistoryFilterPanel } from "@/features/history/components/HistoryFilterPanel";
 import { HistoryTable } from "@/features/history/components/HistoryTable";
+
+const TEXT = {
+  es: {
+    pageTitle: "Historial",
+    pageSubtitle: "Timeline de sesiones finalizadas e inactivas.",
+    viewTable: "Tabla",
+    viewCards: "Tarjetas",
+    loading: "Cargando historial",
+    noResults: "Sin sesiones encontradas",
+    noResultsDesc: "Ajusta los filtros o el rango de fechas para buscar sesiones historicas.",
+    untitled: "Sin titulo",
+    page: "Pagina",
+    of: "de",
+    results: "resultados",
+    previous: "Anterior",
+    next: "Siguiente",
+  },
+  en: {
+    pageTitle: "History",
+    pageSubtitle: "Premium timeline for ended and stale sessions.",
+    viewTable: "Table",
+    viewCards: "Cards",
+    loading: "Loading history",
+    noResults: "No matching sessions",
+    noResultsDesc: "Adjust filters or date range to find historical sessions.",
+    untitled: "Untitled",
+    page: "Page",
+    of: "of",
+    results: "results",
+    previous: "Previous",
+    next: "Next",
+  },
+} as const;
 
 type ViewMode = "table" | "cards";
 
@@ -50,6 +84,14 @@ function formatDate(value: string): string {
 }
 
 export function HistoryPage() {
+  const [lang, setLang] = useState<UiLanguage>(getStoredLanguage());
+  useEffect(() => {
+    const handler = (e: Event) => setLang((e as CustomEvent<{ language: UiLanguage }>).detail.language);
+    window.addEventListener("streamfuse:language-changed", handler);
+    return () => window.removeEventListener("streamfuse:language-changed", handler);
+  }, []);
+  const tx = TEXT[lang];
+
   const [rows, setRows] = useState<UnifiedSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -157,8 +199,8 @@ export function HistoryPage() {
     <div className="space-y-6 min-h-[760px]">
       <header className="flex min-h-[72px] flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-3xl text-white">History</h2>
-          <p className="text-sm text-fg-muted">Premium timeline for ended and stale sessions.</p>
+          <h2 className="font-display text-3xl text-white">{tx.pageTitle}</h2>
+          <p className="text-sm text-fg-muted">{tx.pageSubtitle}</p>
         </div>
 
         <div className="inline-flex rounded-xl border border-white/10 bg-card p-1">
@@ -167,14 +209,14 @@ export function HistoryPage() {
             onClick={() => setViewMode("table")}
             className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "table" ? "bg-white/[0.08] text-white" : "text-fg-muted"}`}
           >
-            Table
+            {tx.viewTable}
           </button>
           <button
             type="button"
             onClick={() => setViewMode("cards")}
             className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "cards" ? "bg-white/[0.08] text-white" : "text-fg-muted"}`}
           >
-            Cards
+            {tx.viewCards}
           </button>
         </div>
       </header>
@@ -207,10 +249,10 @@ export function HistoryPage() {
             </div>
           ) : null}
 
-          {loading ? <LoadingState title="Loading history" /> : null}
+          {loading ? <LoadingState title={tx.loading} /> : null}
           {!loading && error ? <ErrorState description={error} /> : null}
           {!loading && !error && filteredRows.length === 0 ? (
-            <EmptyState title="No matching sessions" description="Adjust filters or date range to find historical sessions." />
+            <EmptyState title={tx.noResults} description={tx.noResultsDesc} />
           ) : null}
 
           {!loading && !error && filteredRows.length > 0 && viewMode === "table" ? (
@@ -228,7 +270,7 @@ export function HistoryPage() {
                   <PosterCard sessionId={session.id} title={session.title || "poster"} />
                   <div className="mt-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-white">{session.title || session.file_name || "Untitled"}</p>
+                      <p className="truncate font-medium text-white">{session.title || session.file_name || tx.untitled}</p>
                       <p className="text-xs text-fg-muted">{session.user_name} - {formatDate(session.updated_at)}</p>
                     </div>
                     <SourceBadge source={session.source} />
@@ -242,18 +284,18 @@ export function HistoryPage() {
           {!loading && !error && filteredRows.length > 0 ? (
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-card px-4 py-3">
               <p className="text-sm text-fg-muted">
-                Page {currentPage} / {totalPages} - {filteredRows.length} results
+                {tx.page} {currentPage} / {totalPages} - {filteredRows.length} {tx.results}
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1}>
-                  Previous
+                  {tx.previous}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                   disabled={currentPage >= totalPages}
                 >
-                  Next
+                  {tx.next}
                 </Button>
               </div>
             </div>
@@ -263,4 +305,3 @@ export function HistoryPage() {
     </div>
   );
 }
-

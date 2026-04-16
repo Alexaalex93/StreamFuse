@@ -1,5 +1,88 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+const DASH_TEXT = {
+  es: {
+    pageTitle: "Dashboard",
+    pageSubtitle: "Monitorizacion en directo de sesiones activas y actividad reciente.",
+    sysHealth: "Estado del Sistema",
+    sysHealthSub: "Metricas en directo del snapshot de Unraid (CPU/GPU/RAM/Red/Energia).",
+    sysDisabled: "Activa las metricas de Unraid en Ajustes para ver la telemetria del host.",
+    sysWaiting: "Esperando el archivo JSON de metricas de Unraid.",
+    cpu: "CPU",
+    gpu: "GPU",
+    ramUsed: "RAM Usada",
+    outbound: "Saliente",
+    networkOut: "Red saliente",
+    powerMonth: "Potencia / Mes",
+    networkRealtime: "Trafico de red (tiempo real)",
+    activeSessions: "Sesiones activas",
+    activeUsers: "Usuarios activos",
+    tautulliSessions: "Sesiones Tautulli",
+    sftpgoSessions: "Sesiones SFTPGo",
+    sambaSessions: "Sesiones Samba",
+    totalShared: "Total compartido",
+    liveRightNow: "En directo ahora",
+    uniqueUsers: "Usuarios unicos",
+    playbackSessions: "Sesiones de reproduccion",
+    transferSessions: "Sesiones de transferencia",
+    smbSessions: "Sesiones SMB",
+    cumulativeTransferred: "Transferido acumulado",
+    activeGrid: "Sesiones activas",
+    activeGridSub: "Actividad actual de Tautulli, SFTPGo y Samba, unificada.",
+    refreshed: "Actualizado",
+    waiting: "Esperando...",
+    loadingSessions: "Cargando sesiones activas",
+    noActiveSessions: "Sin sesiones activas",
+    noActiveDesc: "Prueba a limpiar los filtros o espera nueva actividad.",
+    recentActivity: "Actividad reciente",
+    recentActivitySub: "Ultimas sesiones finalizadas para diagnostico rapido.",
+    noRecentActivity: "Sin actividad reciente",
+    noRecentDesc: "El historial aparecera cuando las sesiones finalicen.",
+    outboundLabel: "Saliente",
+    inboundLabel: "Entrante",
+  },
+  en: {
+    pageTitle: "Dashboard",
+    pageSubtitle: "Live monitoring of active sessions and recent activity.",
+    sysHealth: "System Health",
+    sysHealthSub: "Live metrics from Unraid snapshot (CPU/GPU/RAM/Network/Energy).",
+    sysDisabled: "Enable Unraid metrics in Settings to show host telemetry.",
+    sysWaiting: "Waiting for Unraid metrics JSON file.",
+    cpu: "CPU",
+    gpu: "GPU",
+    ramUsed: "RAM Used",
+    outbound: "Outbound",
+    networkOut: "Network out",
+    powerMonth: "Power / Month",
+    networkRealtime: "Network traffic (real-time)",
+    activeSessions: "Active Sessions",
+    activeUsers: "Active Users",
+    tautulliSessions: "Tautulli Sessions",
+    sftpgoSessions: "SFTPGo Sessions",
+    sambaSessions: "Samba Sessions",
+    totalShared: "Total Shared",
+    liveRightNow: "Live right now",
+    uniqueUsers: "Unique users",
+    playbackSessions: "Playback sessions",
+    transferSessions: "Transfer sessions",
+    smbSessions: "SMB sessions",
+    cumulativeTransferred: "Cumulative transferred",
+    activeGrid: "Active Sessions Grid",
+    activeGridSub: "All current activity from Tautulli, SFTPGo and Samba, unified.",
+    refreshed: "Refreshed",
+    waiting: "Waiting...",
+    loadingSessions: "Loading active sessions",
+    noActiveSessions: "No active sessions",
+    noActiveDesc: "Try clearing filters or wait for new activity.",
+    recentActivity: "Recent Activity",
+    recentActivitySub: "Latest ended or stale sessions for rapid troubleshooting.",
+    noRecentActivity: "No recent activity",
+    noRecentDesc: "History will appear as sessions complete.",
+    outboundLabel: "Outbound",
+    inboundLabel: "Inbound",
+  },
+} as const;
+
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
 import { OverviewStats } from "@/types/stats";
@@ -7,6 +90,7 @@ import { SystemMetricsResponse } from "@/types/system";
 
 import { apiGet, apiGetWithFallback } from "@/shared/api/client";
 import { relativeFromNow } from "@/shared/lib/date";
+import { getStoredLanguage, UiLanguage } from "@/shared/lib/i18n";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
 import { StatCard } from "@/shared/ui/cards/StatCard";
 import { EmptyState } from "@/shared/ui/states/EmptyState";
@@ -116,6 +200,8 @@ function NetworkTrafficChart({
   outboundLegendBps,
   maxDisplayBps,
   maxLabelBps,
+  outboundLabel,
+  inboundLabel,
 }: {
   inboundPoints: number[];
   outboundPoints: number[];
@@ -123,6 +209,8 @@ function NetworkTrafficChart({
   outboundLegendBps: number;
   maxDisplayBps: number;
   maxLabelBps: number;
+  outboundLabel: string;
+  inboundLabel: string;
 }) {
   const len = Math.max(inboundPoints.length, outboundPoints.length);
   if (len < 2) {
@@ -144,8 +232,8 @@ function NetworkTrafficChart({
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-5 text-xs">
-        <span className="text-amber-400">↑ Outbound {formatTrafficRate(outboundLegendBps)}</span>
-        {inboundLegendBps > 0 ? <span className="text-cyan-400">↓ Inbound {formatTrafficRate(inboundLegendBps)}</span> : null}
+        <span className="text-amber-400">↑ {outboundLabel} {formatTrafficRate(outboundLegendBps)}</span>
+        {inboundLegendBps > 0 ? <span className="text-cyan-400">↓ {inboundLabel} {formatTrafficRate(inboundLegendBps)}</span> : null}
       </div>
       <div className="relative">
         <span className="absolute right-0 top-0 text-[11px] text-fg-muted">{formatTrafficRate(maxLabelBps)}</span>
@@ -269,6 +357,14 @@ function buildStableSessionKey(session: UnifiedSession): string {
 }
 
 export function DashboardPage() {
+  const [lang, setLang] = useState<UiLanguage>(getStoredLanguage());
+  useEffect(() => {
+    const handler = (e: Event) => setLang((e as CustomEvent<{ language: UiLanguage }>).detail.language);
+    window.addEventListener("streamfuse:language-changed", handler);
+    return () => window.removeEventListener("streamfuse:language-changed", handler);
+  }, []);
+  const tx = DASH_TEXT[lang];
+
   const [activeSessions, setActiveSessions] = useState<UnifiedSession[]>([]);
   const [recentSessions, setRecentSessions] = useState<UnifiedSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<UnifiedSession | null>(null);
@@ -469,44 +565,44 @@ export function DashboardPage() {
     <>
       <div className="space-y-6 min-h-[760px]">
         <header className="min-h-[72px]">
-          <h2 className="font-display text-3xl text-white">Dashboard</h2>
-          <p className="text-sm text-fg-muted">Live monitoring of active sessions and recent activity.</p>
+          <h2 className="font-display text-3xl text-white">{tx.pageTitle}</h2>
+          <p className="text-sm text-fg-muted">{tx.pageSubtitle}</p>
         </header>
 
         <section className="rounded-2xl border border-white/10 bg-card p-5 shadow-premium">
           <div className="mb-4">
-            <h2 className="font-display text-2xl text-white">System Health</h2>
-            <p className="text-sm text-fg-muted">Live metrics from Unraid snapshot (CPU/GPU/RAM/Network/Energy).</p>
+            <h2 className="font-display text-2xl text-white">{tx.sysHealth}</h2>
+            <p className="text-sm text-fg-muted">{tx.sysHealthSub}</p>
           </div>
 
           {!systemMetrics?.enabled ? (
-            <p className="text-sm text-fg-muted">Enable Unraid metrics in Settings to show host telemetry.</p>
+            <p className="text-sm text-fg-muted">{tx.sysDisabled}</p>
           ) : !systemMetrics?.source_available ? (
-            <p className="text-sm text-fg-muted">Waiting for Unraid metrics JSON file.</p>
+            <p className="text-sm text-fg-muted">{tx.sysWaiting}</p>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-                <StatCard label="CPU" value={formatPercent(systemMetrics.load.cpu_percent)} hint={systemMetrics.identity.cpu_model || "n/a"} />
-                <StatCard label="GPU" value={formatPercent(systemMetrics.load.gpu_percent)} hint={systemMetrics.identity.gpu_model || "n/a"} />
-                <StatCard label="RAM Used" value={formatBytes(systemMetrics.load.ram_used_bytes)} hint={`Free ${formatBytes(systemMetrics.load.ram_free_bytes)}`} />
-                <StatCard label="Outbound" value={formatTrafficRate(systemMetrics.network.outbound_bps ?? 0)} hint="Network out" />
-                <StatCard label="Power / Month" value={`${(systemMetrics.energy.power_watts ?? 0).toFixed(0)} W`} hint={formatMoney(systemMetrics.energy.estimated_month_cost_eur)} />
+                <StatCard label={tx.cpu} value={formatPercent(systemMetrics.load.cpu_percent)} hint={systemMetrics.identity.cpu_model || "n/a"} />
+                <StatCard label={tx.gpu} value={formatPercent(systemMetrics.load.gpu_percent)} hint={systemMetrics.identity.gpu_model || "n/a"} />
+                <StatCard label={tx.ramUsed} value={formatBytes(systemMetrics.load.ram_used_bytes)} hint={`Free ${formatBytes(systemMetrics.load.ram_free_bytes)}`} />
+                <StatCard label={tx.outbound} value={formatTrafficRate(systemMetrics.network.outbound_bps ?? 0)} hint={tx.networkOut} />
+                <StatCard label={tx.powerMonth} value={`${(systemMetrics.energy.power_watts ?? 0).toFixed(0)} W`} hint={formatMoney(systemMetrics.energy.estimated_month_cost_eur)} />
               </div>
 
               <div>
-                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-fg-muted">Network traffic (real-time)</p>
-                <NetworkTrafficChart inboundPoints={inboundSeries} outboundPoints={outboundSeries} inboundLegendBps={displayInboundBps} outboundLegendBps={displayOutboundBps} maxDisplayBps={chartMaxBps} maxLabelBps={maxLabelBps} />
+                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-fg-muted">{tx.networkRealtime}</p>
+                <NetworkTrafficChart inboundPoints={inboundSeries} outboundPoints={outboundSeries} inboundLegendBps={displayInboundBps} outboundLegendBps={displayOutboundBps} maxDisplayBps={chartMaxBps} maxLabelBps={maxLabelBps} outboundLabel={tx.outboundLabel} inboundLabel={tx.inboundLabel} />
               </div>
             </div>
           )}
         </section>
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <StatCard label="Active Sessions" value={String(derived.sessionsActive)} hint="Live right now" />
-          <StatCard label="Active Users" value={String(derived.usersActive)} hint="Unique users" />
-          <StatCard label="Tautulli Sessions" value={String(derived.tautulliCount)} hint="Playback sessions" />
-          <StatCard label="SFTPGo Sessions" value={String(derived.sftpgoCount)} hint="Transfer sessions" />
-          <StatCard label="Samba Sessions" value={String(derived.sambaCount)} hint="SMB sessions" />
-          <StatCard label="Total Shared" value={formatBytes(totalSharedBytes)} hint="Cumulative transferred" />
+          <StatCard label={tx.activeSessions} value={String(derived.sessionsActive)} hint={tx.liveRightNow} />
+          <StatCard label={tx.activeUsers} value={String(derived.usersActive)} hint={tx.uniqueUsers} />
+          <StatCard label={tx.tautulliSessions} value={String(derived.tautulliCount)} hint={tx.playbackSessions} />
+          <StatCard label={tx.sftpgoSessions} value={String(derived.sftpgoCount)} hint={tx.transferSessions} />
+          <StatCard label={tx.sambaSessions} value={String(derived.sambaCount)} hint={tx.smbSessions} />
+          <StatCard label={tx.totalShared} value={formatBytes(totalSharedBytes)} hint={tx.cumulativeTransferred} />
         </section>
 
         <FilterPanel
@@ -522,18 +618,18 @@ export function DashboardPage() {
         <section className="rounded-2xl border border-white/10 bg-card p-5 shadow-premium">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <h2 className="font-display text-2xl text-white">Active Sessions Grid</h2>
-              <p className="text-sm text-fg-muted">All current activity from Tautulli, SFTPGo and Samba, unified but source-safe.</p>
+              <h2 className="font-display text-2xl text-white">{tx.activeGrid}</h2>
+              <p className="text-sm text-fg-muted">{tx.activeGridSub}</p>
             </div>
             <p className="text-xs uppercase tracking-[0.14em] text-fg-muted">
-              {lastUpdated ? `Refreshed ${relativeFromNow(lastUpdated.toISOString())}` : "Waiting..."}
+              {lastUpdated ? `${tx.refreshed} ${relativeFromNow(lastUpdated.toISOString())}` : tx.waiting}
             </p>
           </div>
 
-          {loading ? <LoadingState title="Loading active sessions" /> : null}
+          {loading ? <LoadingState title={tx.loadingSessions} /> : null}
           {!loading && error ? <ErrorState description={error} /> : null}
           {!loading && !error && activeSessions.length === 0 ? (
-            <EmptyState title="No active sessions" description="Try clearing filters or wait for new activity." />
+            <EmptyState title={tx.noActiveSessions} description={tx.noActiveDesc} />
           ) : null}
 
           {!loading && !error && activeSessions.length > 0 ? (
@@ -551,12 +647,12 @@ export function DashboardPage() {
 
         <section className="rounded-2xl border border-white/10 bg-card p-5 shadow-premium">
           <div className="mb-4">
-            <h2 className="font-display text-2xl text-white">Recent Activity</h2>
-            <p className="text-sm text-fg-muted">Latest ended or stale sessions for rapid troubleshooting.</p>
+            <h2 className="font-display text-2xl text-white">{tx.recentActivity}</h2>
+            <p className="text-sm text-fg-muted">{tx.recentActivitySub}</p>
           </div>
 
           {recentSessions.length === 0 ? (
-            <EmptyState title="No recent activity" description="History will appear as sessions complete." />
+            <EmptyState title={tx.noRecentActivity} description={tx.noRecentDesc} />
           ) : (
             <div className="space-y-2">
               {recentSessions.map((session) => (
