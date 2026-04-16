@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.adapters.sftpgo.client import SFTPGoClient
+from app.adapters.sftpgo.log_parser import trim_transfer_log_file
 from app.adapters.sftpgo.mapper import build_sftpgo_session_payload
 from app.domain.enums import SessionStatus, StreamSource
 from app.parsers.mediainfo_parser import parse_mediainfo_for_media
@@ -63,8 +64,12 @@ class SFTPGoSyncService:
         self._last_sample: dict[str, tuple[int, datetime]] = {}
         self._active_session_ids_by_key: dict[str, str] = {}
         self._key_by_session_id: dict[str, str] = {}
+        self._last_log_trim: datetime = datetime.min.replace(tzinfo=UTC)
+        self._log_trim_interval_hours: int = 1
+        self._log_max_age_days: int = 7
 
     async def poll_once(self, log_limit: int = 200) -> dict[str, int]:
+        self._maybe_trim_log_file()
         self._rebuild_active_session_cache()
         cleaned_duplicate_active = self._collapse_duplicate_active_sessions()
         if cleaned_duplicate_active:
@@ -341,6 +346,30 @@ class SFTPGoSyncService:
             self.session_service.repository.db.commit()
 
         return stale_count
+
+    def _maybe_trim_log_file(self) -> None:
+        """Trim the transfer log file at most once per hour, keeping entries
+        no older than *_log_max_age_days* days.  This prevents the JSONL file
+        from growing indefinitely while preserving enough history for accurate
+        session correlation."""
+        now = datetime.now(UTC)
+        hours_since_trim = (now - self._last_log_trim).total_seconds() / 3600
+        if hours_since_trim < self._log_trim_interval_hours:
+            return
+
+        log_path: str | None = getattr(self.client.provider, "transfer_log_json_path", None)
+        if not log_path:
+            return
+
+        try:
+            removed = trim_transfer_log_file(log_path, max_age_days=self._log_max_age_days)
+            if removed:
+                logger.info("SFTPGo log trim: removed %d entries older than %d days from %s",
+                            removed, self._log_max_age_days, log_path)
+        except Exception:
+            logger.exception("SFTPGo log trim failed")
+        finally:
+            self._last_log_trim = now
 
     def _rebuild_active_session_cache(self) -> None:
         self._active_session_ids_by_key = {}
