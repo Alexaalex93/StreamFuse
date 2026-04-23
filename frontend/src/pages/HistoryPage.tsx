@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MediaType, StreamSource } from "@/types/domain";
 import { UnifiedSession } from "@/types/session";
 
+import { apiDelete } from "@/shared/api/client";
 import { apiGet } from "@/shared/api/client";
 import { getStoredLanguage, UiLanguage } from "@/shared/lib/i18n";
 import { SourceBadge } from "@/shared/ui/badges/SourceBadge";
@@ -31,6 +32,11 @@ const TEXT = {
     results: "resultados",
     previous: "Anterior",
     next: "Siguiente",
+    edit: "Editar",
+    cancelEdit: "Cancelar",
+    deleteSelected: (n: number) => `Eliminar (${n})`,
+    deleting: "Eliminando...",
+    confirmDelete: (n: number) => `Eliminar ${n} sesion${n !== 1 ? "es" : ""}? Esta accion no se puede deshacer.`,
   },
   en: {
     pageTitle: "History",
@@ -46,6 +52,11 @@ const TEXT = {
     results: "results",
     previous: "Previous",
     next: "Next",
+    edit: "Edit",
+    cancelEdit: "Cancel",
+    deleteSelected: (n: number) => `Delete (${n})`,
+    deleting: "Deleting...",
+    confirmDelete: (n: number) => `Delete ${n} session${n !== 1 ? "s" : ""}? This cannot be undone.`,
   },
 } as const;
 
@@ -99,6 +110,11 @@ export function HistoryPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  // Edit / selection state
+  const [editMode, setEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const [text, setText] = useState("");
   const [userName, setUserName] = useState("");
@@ -195,6 +211,64 @@ export function HistoryPage() {
     return items;
   }, [text, userName, source, mediaType, dateFrom, dateTo]);
 
+  // --- edit mode helpers ---------------------------------------------------
+
+  const enterEditMode = () => {
+    setEditMode(true);
+    setSelectedIds(new Set());
+    setExpandedId(null);
+  };
+
+  const exitEditMode = () => {
+    setEditMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (allIds: number[]) => {
+    setSelectedIds((prev) => {
+      const allSelected = allIds.every((id) => prev.has(id));
+      if (allSelected) {
+        // deselect all on current page
+        const next = new Set(prev);
+        allIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      // select all on current page
+      const next = new Set(prev);
+      allIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmed = window.confirm(tx.confirmDelete(selectedIds.size));
+    if (!confirmed) return;
+
+    try {
+      setDeleting(true);
+      await apiDelete("/sessions/bulk", { ids: Array.from(selectedIds) });
+      exitEditMode();
+      await fetchHistory();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 min-h-[760px]">
       <header className="flex min-h-[72px] flex-wrap items-end justify-between gap-4">
@@ -203,21 +277,43 @@ export function HistoryPage() {
           <p className="text-sm text-fg-muted">{tx.pageSubtitle}</p>
         </div>
 
-        <div className="inline-flex rounded-xl border border-white/10 bg-card p-1">
-          <button
-            type="button"
-            onClick={() => setViewMode("table")}
-            className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "table" ? "bg-white/[0.08] text-white" : "text-fg-muted"}`}
-          >
-            {tx.viewTable}
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("cards")}
-            className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "cards" ? "bg-white/[0.08] text-white" : "text-fg-muted"}`}
-          >
-            {tx.viewCards}
-          </button>
+        <div className="flex items-center gap-3">
+          {editMode ? (
+            <>
+              <Button
+                variant="destructive"
+                onClick={() => { void handleDeleteSelected(); }}
+                disabled={selectedIds.size === 0 || deleting}
+              >
+                {deleting ? tx.deleting : tx.deleteSelected(selectedIds.size)}
+              </Button>
+              <Button variant="outline" onClick={exitEditMode} disabled={deleting}>
+                {tx.cancelEdit}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={enterEditMode}>
+                {tx.edit}
+              </Button>
+              <div className="inline-flex rounded-xl border border-white/10 bg-card p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("table")}
+                  className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "table" ? "bg-white/[0.08] text-white" : "text-fg-muted"}`}
+                >
+                  {tx.viewTable}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("cards")}
+                  className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "cards" ? "bg-white/[0.08] text-white" : "text-fg-muted"}`}
+                >
+                  {tx.viewCards}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
@@ -239,7 +335,7 @@ export function HistoryPage() {
         />
 
         <section className="space-y-4">
-          {chips.length > 0 ? (
+          {chips.length > 0 && !editMode ? (
             <div className="flex flex-wrap gap-2">
               {chips.map((chip) => (
                 <span key={chip.key} className="rounded-full border border-white/20 bg-white/[0.04] px-3 py-1 text-xs text-fg-muted">
@@ -260,24 +356,47 @@ export function HistoryPage() {
               sessions={pageRows}
               expandedId={expandedId}
               onToggleExpand={(id) => setExpandedId((current) => (current === id ? null : id))}
+              editMode={editMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
             />
           ) : null}
 
           {!loading && !error && filteredRows.length > 0 && viewMode === "cards" ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {pageRows.map((session) => (
-                <article key={session.id} className="rounded-2xl border border-white/10 bg-card p-4 shadow-premium">
-                  <PosterCard sessionId={session.id} title={session.title || "poster"} />
-                  <div className="mt-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-white">{session.title || session.file_name || tx.untitled}</p>
-                      <p className="text-xs text-fg-muted">{session.user_name} - {formatDate(session.updated_at)}</p>
+              {pageRows.map((session) => {
+                const isSelected = selectedIds.has(session.id);
+                return (
+                  <article
+                    key={session.id}
+                    className={`relative rounded-2xl border bg-card p-4 shadow-premium transition-colors ${
+                      editMode ? "cursor-pointer" : ""
+                    } ${isSelected ? "border-orange-500/60 bg-orange-500/10" : "border-white/10"}`}
+                    onClick={editMode ? () => toggleSelect(session.id) : undefined}
+                  >
+                    {editMode ? (
+                      <div className="absolute right-3 top-3 z-10" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(session.id)}
+                          className="h-5 w-5 cursor-pointer accent-orange-500"
+                        />
+                      </div>
+                    ) : null}
+                    <PosterCard sessionId={session.id} title={session.title || "poster"} />
+                    <div className="mt-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-white">{session.title || session.file_name || tx.untitled}</p>
+                        <p className="text-xs text-fg-muted">{session.user_name} - {formatDate(session.updated_at)}</p>
+                      </div>
+                      <SourceBadge source={session.source} />
                     </div>
-                    <SourceBadge source={session.source} />
-                  </div>
-                  <p className="mt-2 truncate text-xs text-fg-muted">{session.file_path || "n/a"}</p>
-                </article>
-              ))}
+                    <p className="mt-2 truncate text-xs text-fg-muted">{session.file_path || "n/a"}</p>
+                  </article>
+                );
+              })}
             </div>
           ) : null}
 

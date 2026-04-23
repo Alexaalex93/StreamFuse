@@ -130,6 +130,7 @@ const TEXT = {
     seriesLabel: "Series",
     moviesLabel: "Películas",
     usersLower: "usuarios",
+    userLowerSingular: "usuario",
 
     drillTitlePrefix: "Comparativa por usuario",
     drillSubtitle: "Desglose superpuesto por usuario para esta métrica.",
@@ -226,6 +227,7 @@ const TEXT = {
     seriesLabel: "Series",
     moviesLabel: "Movies",
     usersLower: "users",
+    userLowerSingular: "user",
 
     drillTitlePrefix: "Per-user comparison",
     drillSubtitle: "Overlay by user for this metric.",
@@ -648,10 +650,10 @@ export function StatsPage() {
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard title={t.topMovies} subtitle={t.topMoviesSub}>
-          <TopMediaList items={media.top_movies} usersLabel={t.usersLower} />
+          <TopMediaList items={media.top_movies} usersLabel={t.usersLower} userLabelSingular={t.userLowerSingular} />
         </ChartCard>
         <ChartCard title={t.topSeries} subtitle={t.topSeriesSub}>
-          <TopMediaList items={media.top_series} usersLabel={t.usersLower} />
+          <TopMediaList items={media.top_series} usersLabel={t.usersLower} userLabelSingular={t.userLowerSingular} />
         </ChartCard>
       </section>
 

@@ -2,7 +2,7 @@
 
 import { cn } from "@/shared/lib/cn";
 
-type ButtonVariant = "default" | "outline" | "ghost";
+type ButtonVariant = "default" | "outline" | "ghost" | "destructive";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
@@ -15,6 +15,8 @@ const variantStyles: Record<ButtonVariant, string> = {
     "border border-white/20 bg-white/[0.04] text-fg hover:bg-white/[0.08] focus-visible:ring-white/20",
   ghost:
     "border border-transparent bg-transparent text-fg-muted hover:border-white/15 hover:bg-white/[0.05] hover:text-fg focus-visible:ring-white/20",
+  destructive:
+    "border border-red-700 bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500/50",
 };
 
 export function Button({ className, variant = "default", ...props }: ButtonProps) {

@@ -134,3 +134,10 @@ export async function apiPost<TResponse, TBody>(path: string, body: TBody): Prom
     body: JSON.stringify(body),
   });
 }
+
+export async function apiDelete<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+  return apiRequest<TResponse>(path, {
+    method: "DELETE",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}

@@ -30,6 +30,7 @@ const TEXT = {
     bandwidth: "Ancho de banda",
     series: "serie",
     untitled: "Sin titulo",
+    selectAll: "Todo",
   },
   en: {
     colSession: "Session",
@@ -52,6 +53,7 @@ const TEXT = {
     bandwidth: "Bandwidth",
     series: "series",
     untitled: "Untitled",
+    selectAll: "All",
   },
 } as const;
 
@@ -59,6 +61,10 @@ type HistoryTableProps = {
   sessions: UnifiedSession[];
   expandedId: number | null;
   onToggleExpand: (id: number) => void;
+  editMode?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
+  onToggleSelectAll?: (allIds: number[]) => void;
 };
 
 function fmt(value: string | null): string {
@@ -165,7 +171,15 @@ function extractBitrateText(session: UnifiedSession): string {
   return "n/a";
 }
 
-export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTableProps) {
+export function HistoryTable({
+  sessions,
+  expandedId,
+  onToggleExpand,
+  editMode = false,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+}: HistoryTableProps) {
   const [lang, setLang] = useState<UiLanguage>(getStoredLanguage());
   useEffect(() => {
     const handler = (e: Event) => setLang((e as CustomEvent<{ language: UiLanguage }>).detail.language);
@@ -174,28 +188,61 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
   }, []);
   const tx = TEXT[lang];
 
+  const allIds = sessions.map((s) => s.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds?.has(id));
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10 bg-card shadow-premium">
       <table className="min-w-[900px] w-full table-auto text-sm">
         <thead className="bg-white/[0.03] text-left text-fg-muted">
           <tr>
+            {editMode ? (
+              <th className="px-3 py-3 w-10">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => onToggleSelectAll?.(allIds)}
+                  className="h-4 w-4 cursor-pointer accent-orange-500"
+                  title={tx.selectAll}
+                />
+              </th>
+            ) : null}
             <th className="px-3 py-3 font-medium">{tx.colSession}</th>
             <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colUser}</th>
             <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colSource}</th>
             <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colMedia}</th>
             <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colEnded}</th>
             <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colBandwidth}</th>
-            <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colAction}</th>
+            {!editMode ? (
+              <th className="px-3 py-3 font-medium whitespace-nowrap">{tx.colAction}</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
           {sessions.map((session) => {
             const expanded = session.id === expandedId;
             const bitrateText = extractBitrateText(session);
+            const isSelected = selectedIds?.has(session.id) ?? false;
+            const colSpan = editMode ? 7 : 7;
 
             return (
               <Fragment key={session.id}>
-                <tr className="border-t border-white/10 align-top">
+                <tr
+                  className={`border-t border-white/10 align-top transition-colors ${
+                    isSelected ? "bg-orange-500/10" : ""
+                  } ${editMode ? "cursor-pointer hover:bg-white/[0.03]" : ""}`}
+                  onClick={editMode ? () => onToggleSelect?.(session.id) : undefined}
+                >
+                  {editMode ? (
+                    <td className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelect?.(session.id)}
+                        className="h-4 w-4 cursor-pointer accent-orange-500"
+                      />
+                    </td>
+                  ) : null}
                   <td className="px-3 py-3">
                     <p className="break-words font-medium text-white">{rowTitle(session, tx.untitled)}</p>
                     <p className="mt-1 break-all text-xs text-fg-muted">{rowSubtitle(session)}</p>
@@ -205,20 +252,22 @@ export function HistoryTable({ sessions, expandedId, onToggleExpand }: HistoryTa
                   <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{mediaLabel(session, tx.series)}</td>
                   <td className="px-3 py-3 text-fg-muted whitespace-nowrap">{fmt(session.ended_at || session.updated_at)}</td>
                   <td className="px-3 py-3 whitespace-nowrap"><BandwidthBadge bandwidthBps={session.bandwidth_bps} text={bitrateText} /></td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/15 px-3 py-1 text-xs text-fg-muted transition hover:bg-white/[0.06]"
-                      onClick={() => onToggleExpand(session.id)}
-                    >
-                      {expanded ? tx.hide : tx.details}
-                    </button>
-                  </td>
+                  {!editMode ? (
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-white/15 px-3 py-1 text-xs text-fg-muted transition hover:bg-white/[0.06]"
+                        onClick={() => onToggleExpand(session.id)}
+                      >
+                        {expanded ? tx.hide : tx.details}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
 
-                {expanded ? (
+                {expanded && !editMode ? (
                   <tr className="border-t border-white/10 bg-white/[0.01]">
-                    <td colSpan={7} className="px-4 py-4">
+                    <td colSpan={colSpan} className="px-4 py-4">
                       <div className="flex flex-col gap-4 md:flex-row">
                         <PosterCard
                           sessionId={session.id}

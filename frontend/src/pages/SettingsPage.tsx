@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiGet, apiPost, apiPut } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
@@ -52,7 +52,7 @@ const TEXT = {
     pollingFreq: "Frecuencia de sondeo (segundos)",
     timezone: "Zona horaria",
     uiLanguage: "Idioma de interfaz",
-    langEs: "Espanol",
+    langEs: "Español",
     langEn: "English",
     placeholderPath: "Ruta de marcador de posicion",
     historyRetention: "Retencion de historial (dias)",
@@ -79,6 +79,18 @@ const TEXT = {
     changingPassword: "Cambiando...",
     changePassword: "Cambiar contrasena de admin",
     passwordSuccess: "Contrasena de admin actualizada correctamente.",
+    // Maintenance
+    maintenanceSection: "Mantenimiento",
+    maintenanceDesc: "Operaciones de reparacion y limpieza de datos.",
+    enrichMediainfo: "Completar datos tecnicos",
+    enrichMediainfoDesc: "Busca sesiones sin ancho de banda, resolucion o codecs y rellena los datos leyendo los NFO/mediainfo de cada archivo.",
+    enriching: "Buscando...",
+    enrichDone: (updated: number, skipped: number, details: string[]) =>
+      updated > 0
+        ? `${updated} ${updated === 1 ? "sesion actualizada" : "sesiones actualizadas"}${skipped > 0 ? `, ${skipped} sin NFO ni archivo legible` : ""}.`
+        : skipped > 0
+          ? `Sin datos disponibles en disco para ${skipped} sesion${skipped !== 1 ? "es" : ""}${details.length > 0 ? ` (ej: ${details[0]})` : ""}.`
+          : "No habia sesiones pendientes.",
     // Buttons
     saving: "Guardando...",
     saveSettings: "Guardar ajustes",
@@ -123,7 +135,7 @@ const TEXT = {
     pollingFreq: "Polling Frequency (seconds)",
     timezone: "Timezone",
     uiLanguage: "UI Language",
-    langEs: "Espanol",
+    langEs: "Español",
     langEn: "English",
     placeholderPath: "Placeholder Path",
     historyRetention: "History Retention (days)",
@@ -148,6 +160,19 @@ const TEXT = {
     changingPassword: "Changing...",
     changePassword: "Change Admin Password",
     passwordSuccess: "Admin password updated successfully.",
+    // Maintenance
+    maintenanceSection: "Maintenance",
+    maintenanceDesc: "Data repair and cleanup operations.",
+    enrichMediainfo: "Fill missing technical data",
+    enrichMediainfoDesc: "Finds sessions without bandwidth, resolution or codecs and fills them in by reading the NFO/mediainfo file for each entry.",
+    enriching: "Searching...",
+    enrichDone: (updated: number, skipped: number, details: string[]) =>
+      updated > 0
+        ? `${updated} ${updated === 1 ? "session updated" : "sessions updated"}${skipped > 0 ? `, ${skipped} without NFO or readable file` : ""}.`
+        : skipped > 0
+          ? `No data available on disk for ${skipped} session${skipped !== 1 ? "s" : ""}${details.length > 0 ? ` (e.g.: ${details[0]})` : ""}.`
+          : "No pending sessions.",
+    // Buttons
     saving: "Saving...",
     saveSettings: "Save Settings",
     resetChanges: "Reset Changes",
@@ -278,6 +303,9 @@ export function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichResult, setEnrichResult] = useState<string | null>(null);
+  const enrichResultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadDetectedUsers = async () => {
     const users = await apiGet<DetectedUserAliasOption[]>("/settings/detected-users");
@@ -421,6 +449,25 @@ export function SettingsPage() {
       setSuccess(null);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onEnrichMediainfo = async () => {
+    try {
+      setEnriching(true);
+      setEnrichResult(null);
+      const result = await apiPost<{ updated: number; skipped: number; details: string[] }, Record<string, never>>(
+        "/sessions/enrich-mediainfo",
+        {}
+      );
+      const msg = tx.enrichDone(result.updated, result.skipped, result.details ?? []);
+      setEnrichResult(msg);
+      if (enrichResultTimer.current) clearTimeout(enrichResultTimer.current);
+      enrichResultTimer.current = setTimeout(() => setEnrichResult(null), 8000);
+    } catch (err) {
+      setEnrichResult(err instanceof Error ? err.message : "Error");
+    } finally {
+      setEnriching(false);
     }
   };
 
@@ -758,6 +805,34 @@ export function SettingsPage() {
             <Button type="button" variant="outline" disabled={changingPassword} onClick={() => void onChangePassword()}>
               {changingPassword ? tx.changingPassword : tx.changePassword}
             </Button>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-card p-5 space-y-4">
+          <div>
+            <h3 className="font-display text-xl text-white">{tx.maintenanceSection}</h3>
+            <p className="text-sm text-fg-muted">{tx.maintenanceDesc}</p>
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-fg">{tx.enrichMediainfo}</p>
+                <p className="text-xs text-fg-muted">{tx.enrichMediainfoDesc}</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={enriching}
+                onClick={() => void onEnrichMediainfo()}
+                className="shrink-0"
+              >
+                {enriching ? tx.enriching : tx.enrichMediainfo}
+              </Button>
+            </div>
+            {enrichResult ? (
+              <p className="text-xs text-emerald-300">{enrichResult}</p>
+            ) : null}
           </div>
         </section>
 

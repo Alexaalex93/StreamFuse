@@ -32,7 +32,7 @@ export function PosterCard({
         alt={title}
         loading="lazy"
         className={cn(
-          variant === "poster" ? "h-full w-full object-cover" : "h-36 w-full object-cover",
+          variant === "poster" ? "h-full w-full object-cover object-top" : "h-36 w-full object-cover object-top",
           imageClassName,
         )}
         onError={(event) => {
