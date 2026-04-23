@@ -52,7 +52,9 @@ class SFTPGoMockProvider(SFTPGoProvider):
 
     async def fetch_active_connections(self) -> list[SFTPGoRawConnection]:
         self._tick += 1
-        base_sent = 30_000_000 + (self._tick * 6_000_000)
+        # Start above the 50 MB threshold so _looks_like_download considers this
+        # a real playback session rather than a library-scan pre-buffer.
+        base_sent = 60_000_000 + (self._tick * 6_000_000)
         return [
             {
                 "connection_id": "mock-conn-1",

@@ -83,11 +83,26 @@ def parse_transfer_log_file(path: str | None, limit: int = 200) -> list[dict]:
     return parse_transfer_log_lines(lines)
 
 
-def trim_transfer_log_file(path: str | None, max_age_days: int = 7) -> int:
-    """Remove log entries older than *max_age_days* from a JSONL file in-place.
+def trim_transfer_log_file(
+    path: str | None,
+    max_age_days: int = 7,
+    min_size_bytes: int = 1 * 1024 * 1024,
+) -> int:
+    """Remove log entries older than *max_age_days* or smaller than
+    *min_size_bytes* from a JSONL file in-place.
 
     Returns the number of lines removed.  Safe to call concurrently with
     readers because it writes to a temp file and atomically renames it.
+
+    Filtering logic (entry is KEPT when ALL conditions pass):
+    - Timestamp recent enough (within max_age_days), OR no timestamp present.
+    - size_bytes >= min_size_bytes, OR no size_bytes field present.
+
+    The size filter removes the hundreds of small range-requests that FTP
+    clients like Infuse make when scanning a media library (thumbnail fetches,
+    metadata probes, format detection).  Those entries are noise for StreamFuse
+    — only completed transfers large enough to indicate real playback matter.
+    Set min_size_bytes=0 to disable the size filter.
 
     Timestamp detection (field ``ts``):
     - Unix seconds  → value < 1e10
@@ -121,6 +136,19 @@ def trim_transfer_log_file(path: str | None, max_age_days: int = 7) -> int:
             kept.append(line)
             continue
 
+        # --- size filter ---------------------------------------------------
+        # Drop tiny probe/thumbnail entries when min_size_bytes is set.
+        # Entries with no size field are kept (could be non-transfer events).
+        if min_size_bytes > 0:
+            size_raw = data.get("size_bytes") or data.get("bytes_sent") or data.get("size")
+            if size_raw is not None:
+                try:
+                    if int(float(size_raw)) < min_size_bytes:
+                        continue  # drop — too small to be meaningful
+                except (TypeError, ValueError):
+                    pass
+
+        # --- age filter ----------------------------------------------------
         ts_raw = data.get("ts") or data.get("timestamp") or data.get("time")
         if ts_raw is None:
             kept.append(line)
@@ -140,16 +168,22 @@ def trim_transfer_log_file(path: str | None, max_age_days: int = 7) -> int:
     if removed <= 0:
         return 0
 
-    # Atomic write via temp file to avoid partial reads during rotation
-    tmp = file_path.with_suffix(".tmp")
+    # Write back in-place (truncate + rewrite) rather than via a temp-file rename.
+    #
+    # The rename/replace approach is "more atomic" but it changes the inode that
+    # backs the file.  On FUSE filesystems (Docker volumes on Unraid/Linux), when
+    # a process (SFTPGo) has the original file open for appending and we rename it
+    # away, the kernel keeps the old inode alive under a ".fuse_hidden*" name.
+    # SFTPGo then continues appending to the hidden file, not to the new
+    # transfers.jsonl — so StreamFuse reads a stale snapshot forever.
+    #
+    # In-place truncation preserves the inode: SFTPGo's open file descriptor keeps
+    # pointing to the right file and new log entries appear correctly.
+    # The window where a concurrent reader might see a partially-written file is
+    # negligible for a trim operation (milliseconds, not seconds).
     try:
-        tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
-        tmp.replace(file_path)
+        file_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
     except OSError:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
         return 0
 
     return removed

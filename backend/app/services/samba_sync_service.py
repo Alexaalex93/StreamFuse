@@ -15,6 +15,12 @@ from app.persistence.repositories.app_setting_repository import AppSettingReposi
 from app.poster_resolver.resolver import PosterResolver
 from app.services.session_service import SessionService
 
+# Sessions for the same user+file that ended less than this many seconds ago
+# are considered the same sitting and will be reused (merged) rather than
+# creating a new history entry.  Sessions ended longer ago are treated as a
+# fresh re-watch and will produce a separate history entry.
+_SAME_SESSION_MERGE_WINDOW_SECONDS = 3600  # 1 hour
+
 _MEDIA_FILE_EXTENSIONS = {
     ".mkv",
     ".mp4",
@@ -48,9 +54,9 @@ class SambaSyncService:
         client: SambaClient,
         session_service: SessionService,
         poster_resolver: PosterResolver,
-        stale_seconds: int = 180,
+        stale_seconds: int = 90,
         path_mappings: list[str] | None = None,
-        min_consecutive_polls_for_active: int = 3,
+        min_consecutive_polls_for_active: int = 2,
         min_open_seconds_for_active: int = 20,
         app_setting_repository: AppSettingRepository | None = None,
     ) -> None:
@@ -106,7 +112,11 @@ class SambaSyncService:
                 user_name = str(item["connection"].get("username") or "unknown")
                 ip_value = _normalize_ip(str(item["connection"].get("remote_address") or ""))
                 logical_key = logical_key or self._group_key(user_name, ip_value, media_path)
-                source_session_id = self._resolve_session_id_for_key(logical_key)
+                source_session_id = self._resolve_session_id_for_key(
+                    logical_key,
+                    user_name=user_name,
+                    file_path=media_path,
+                )
                 seen_ids.add(source_session_id)
 
                 media_info = parse_mediainfo_for_media(media_path)
@@ -329,11 +339,36 @@ class SambaSyncService:
             self._active_session_ids_by_key[key] = row.source_session_id
             self._key_by_session_id[row.source_session_id] = key
 
-    def _resolve_session_id_for_key(self, logical_key: str) -> str:
+    def _resolve_session_id_for_key(
+        self,
+        logical_key: str,
+        user_name: str = "",
+        file_path: str = "",
+    ) -> str:
+        # 1. Already in active cache — reuse.
         existing = self._active_session_ids_by_key.get(logical_key)
         if existing:
             return existing
 
+        # 2. Look for a recently-ended session (same user + file, within merge
+        #    window) so that brief pauses / connection drops are merged into the
+        #    same sitting rather than creating duplicate history entries.
+        #    Sessions that ended longer ago (e.g. days) are treated as a fresh
+        #    re-watch and fall through to a new session_id below.
+        if user_name and file_path:
+            recent = self.session_service.repository.find_recent_ended_by_user_and_file(
+                source=StreamSource.SAMBA,
+                user_name=user_name,
+                file_path=file_path,
+                within_seconds=_SAME_SESSION_MERGE_WINDOW_SECONDS,
+            )
+            if recent:
+                source_session_id = recent.source_session_id
+                self._active_session_ids_by_key[logical_key] = source_session_id
+                self._key_by_session_id[source_session_id] = logical_key
+                return source_session_id
+
+        # 3. Genuinely new session (first watch, or re-watch days later).
         stamp = int(datetime.now(UTC).timestamp() * 1000)
         slug = abs(hash(logical_key))
         source_session_id = f"samba-{slug}-{stamp}"
@@ -361,6 +396,13 @@ class SambaSyncService:
             row.ended_at = now
             row.raw_payload = payload
             stale_count += 1
+
+            # Remove from in-memory caches so that a future re-watch of the
+            # same file by the same user creates a brand-new session instead
+            # of updating this now-ended one.
+            logical_key = self._key_by_session_id.pop(row.source_session_id, None)
+            if logical_key:
+                self._active_session_ids_by_key.pop(logical_key, None)
 
         if stale_count:
             self.session_service.repository.db.commit()

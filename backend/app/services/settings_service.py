@@ -150,7 +150,7 @@ class SettingsService:
                 )
             ),
             timezone=self._validated_timezone(
-                self._value_or_default(by_key, self.KEY_TIMEZONE, "UTC")
+                self._value_or_default(by_key, self.KEY_TIMEZONE, "Europe/Madrid")
             ),
             media_root_paths=self._parse_list(
                 self._value_or_default(

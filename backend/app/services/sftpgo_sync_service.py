@@ -43,8 +43,21 @@ _MEDIA_FILE_EXTENSIONS = {
     ".divx",
     ".xvid",
 }
-_MIN_MEANINGFUL_TRANSFER_BYTES = 10 * 1024 * 1024
+_MIN_MEANINGFUL_TRANSFER_BYTES = 50 * 1024 * 1024   # active connection must have sent ≥ 50 MB → real playback
 _MIN_SEGMENT_BYTES_FOR_PLAYBACK = 50 * 1024 * 1024  # single completed segment ≥ 50 MB → real playback
+# Sessions younger than this that go stale are library-scan pre-buffers, not real watches.
+# Infuse disconnects in < 5 s when browsing; real playback lasts minutes.
+_MIN_SESSION_DURATION_SECONDS = 60
+# When a user's router has a NAT timeout (~120 s is common), Infuse reconnects every 2 minutes.
+# Each individual FTP segment is small (< 50 MB) but the cumulative total across all reconnects
+# proves real playback.  We aggregate completed log entries within this window before deciding.
+_RECONNECT_AGGREGATE_WINDOW_SECONDS = 30 * 60  # 30-minute rolling window
+# Log-only session creation: minimum number of completed segments OR minimum
+# cumulative elapsed transfer time to distinguish a real download/stream from
+# a brief Infuse library-scan probe (which typically generates 2-5 small segments
+# completing in under a second each).
+_LOG_ONLY_MIN_SEGMENTS = 5        # at least 5 completed RETR operations, OR …
+_LOG_ONLY_MIN_ELAPSED_MS = 60_000 # … at least 60 s of cumulative transfer time
 
 
 class SFTPGoSyncService:
@@ -66,7 +79,12 @@ class SFTPGoSyncService:
         self._key_by_session_id: dict[str, str] = {}
         self._last_log_trim: datetime = datetime.min.replace(tzinfo=UTC)
         self._log_trim_interval_hours: int = 1
-        self._log_max_age_days: int = 7
+        self._log_max_age_days: int = 2
+        # Drop entries smaller than 1 MB during trim — these are thumbnail fetches,
+        # metadata probes and format-detection range-requests from clients like Infuse.
+        # They represent the bulk of log volume (hundreds of thousands per day) but
+        # are irrelevant for session detection which requires ≥ 50 MB transfers.
+        self._log_min_size_bytes: int = 1 * 1024 * 1024
 
     async def poll_once(self, log_limit: int = 200) -> dict[str, int]:
         self._maybe_trim_log_file()
@@ -80,7 +98,7 @@ class SFTPGoSyncService:
 
         download_logs = [log for log in logs if self._is_download_log(log)]
         log_index = self._index_logs(download_logs)
-        grouped_connections = self._group_download_connections(active_connections, log_index)
+        grouped_connections = self._group_download_connections(active_connections, log_index, download_logs)
 
         seen_ids: set[str] = set()
         imported = 0
@@ -136,22 +154,31 @@ class SFTPGoSyncService:
         cleaned_history_noise = self._purge_invalid_history_noise()
         stale_marked = self._mark_stale_sessions(seen_ids)
 
+        # Rebuild cache before log-only pass so the has_active check is fresh.
         self._rebuild_active_session_cache()
+
+        # Detect completed downloads that finished entirely between two polls
+        # (e.g. parallel offline downloads at full network speed).  Must run after
+        # the cache rebuild so we correctly skip user+file combos already tracked
+        # by an active session.
+        log_only_imported = self._import_completed_log_sessions(download_logs)
 
         return {
             "active_imported": imported,
+            "log_only_imported": log_only_imported,
             "cleaned_duplicate_active": cleaned_duplicate_active,
             "cleaned_invalid": cleaned_invalid,
             "cleaned_history_noise": cleaned_history_noise,
             "stale_marked": stale_marked,
             "errors": errors,
-            "total_processed": imported + cleaned_duplicate_active + cleaned_invalid + cleaned_history_noise + stale_marked,
+            "total_processed": imported + log_only_imported + cleaned_duplicate_active + cleaned_invalid + cleaned_history_noise + stale_marked,
         }
 
     def _group_download_connections(
         self,
         active_connections: list[dict[str, Any]],
         log_index: dict[str, list[dict[str, Any]]],
+        all_download_logs: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         grouped: dict[str, dict[str, Any]] = {}
 
@@ -165,15 +192,23 @@ class SFTPGoSyncService:
             if not media_path or not self._looks_like_media_file(media_path):
                 continue
 
-            if not self._looks_like_download(connection, related_logs):
-                continue
-
+            # Extract username here (before _looks_like_download) so we can pass it
+            # for NAT-reconnect cumulative-bytes aggregation.
             username = str(
                 connection.get("username")
                 or _best_log_field(related_logs, "username")
                 or "unknown"
             )
             if not username.strip():
+                continue
+
+            if not self._looks_like_download(
+                connection,
+                related_logs,
+                all_download_logs=all_download_logs,
+                username=username,
+                file_path=media_path,
+            ):
                 continue
 
             ip_value = str(
@@ -305,8 +340,34 @@ class SFTPGoSyncService:
             title = (row.title or "").strip().lower()
             is_noise_title = title.startswith("ftp ") or title == "n/a" or title == ""
             is_media = bool(file_path and self._looks_like_media_file(file_path))
+
             if is_media and not is_noise_title:
-                continue
+                # Log-only sessions (parallel offline downloads) are written as
+                # ENDED from the start and have started_at ≈ ended_at because
+                # all parallel segments finish within seconds.  They are already
+                # validated by the _LOG_ONLY_MIN_SEGMENTS / _LOG_ONLY_MIN_ELAPSED_MS
+                # filters, so the short-duration heuristic below does not apply.
+                if str(row.source_session_id or "").startswith("sftpgo-log-"):
+                    continue
+
+                # Also purge real-media entries that are suspiciously short-lived —
+                # these are FTP library-scan pre-buffers that slipped through the
+                # _MIN_MEANINGFUL_TRANSFER_BYTES gate before it was raised to 50 MB.
+                started = _as_utc(row.started_at)
+                ended = _as_utc(row.ended_at) or _as_utc(row.updated_at)
+                if started and ended:
+                    duration_s = (ended - started).total_seconds()
+                    if duration_s < _MIN_SESSION_DURATION_SECONDS:
+                        logger.debug(
+                            "Purging short history entry %s (%.0f s) — likely library scan",
+                            row.source_session_id,
+                            duration_s,
+                        )
+                        # fall through to delete below
+                    else:
+                        continue
+                else:
+                    continue  # no timestamps → keep
 
             self.session_service.repository.db.delete(row)
             self._drop_session_from_caches(row.source_session_id)
@@ -334,6 +395,23 @@ class SFTPGoSyncService:
             if updated_at > stale_threshold:
                 continue
 
+            # Sessions that existed for less than _MIN_SESSION_DURATION_SECONDS are
+            # almost certainly Infuse/FTP library-scan pre-buffers, not real watches.
+            # Browsing a media library opens a file, downloads ~10-26 MB and disconnects
+            # within seconds.  Delete these silently instead of surfacing them in history.
+            started_at = _as_utc(row.started_at) or updated_at
+            session_age_seconds = (updated_at - started_at).total_seconds()
+            if session_age_seconds < _MIN_SESSION_DURATION_SECONDS:
+                logger.debug(
+                    "Deleting short-lived SFTPGo session %s (%.0f s) — likely library scan",
+                    row.source_session_id,
+                    session_age_seconds,
+                )
+                self.session_service.repository.db.delete(row)
+                self._drop_session_from_caches(row.source_session_id)
+                stale_count += 1
+                continue
+
             payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
             payload["lifecycle"] = "stale"
             row.status = SessionStatus.ENDED
@@ -348,10 +426,17 @@ class SFTPGoSyncService:
         return stale_count
 
     def _maybe_trim_log_file(self) -> None:
-        """Trim the transfer log file at most once per hour, keeping entries
-        no older than *_log_max_age_days* days.  This prevents the JSONL file
-        from growing indefinitely while preserving enough history for accurate
-        session correlation."""
+        """Trim the transfer log file at most once per hour.
+
+        Removes entries that are either:
+        - older than *_log_max_age_days* (default 2 days), OR
+        - smaller than *_log_min_size_bytes* (default 1 MB).
+
+        The size filter alone eliminates ~95 % of log volume: FTP clients like
+        Infuse generate hundreds of tiny range-requests per day for thumbnail
+        fetching, metadata probing and format detection.  StreamFuse only cares
+        about large completed transfers (≥ 50 MB) for session correlation.
+        """
         now = datetime.now(UTC)
         hours_since_trim = (now - self._last_log_trim).total_seconds() / 3600
         if hours_since_trim < self._log_trim_interval_hours:
@@ -362,10 +447,16 @@ class SFTPGoSyncService:
             return
 
         try:
-            removed = trim_transfer_log_file(log_path, max_age_days=self._log_max_age_days)
+            removed = trim_transfer_log_file(
+                log_path,
+                max_age_days=self._log_max_age_days,
+                min_size_bytes=self._log_min_size_bytes,
+            )
             if removed:
-                logger.info("SFTPGo log trim: removed %d entries older than %d days from %s",
-                            removed, self._log_max_age_days, log_path)
+                logger.info(
+                    "SFTPGo log trim: removed %d entries (age>%dd or size<%dB) from %s",
+                    removed, self._log_max_age_days, self._log_min_size_bytes, log_path,
+                )
         except Exception:
             logger.exception("SFTPGo log trim failed")
         finally:
@@ -652,7 +743,14 @@ class SFTPGoSyncService:
     @staticmethod
     def _group_key(username: str, ip_address: str, file_path: str) -> str:
         return f"{username.strip().lower()}|{ip_address.strip()}|{file_path.strip().lower()}"
-    def _looks_like_download(self, connection: dict[str, Any], logs: list[dict[str, Any]]) -> bool:
+    def _looks_like_download(
+        self,
+        connection: dict[str, Any],
+        logs: list[dict[str, Any]],
+        all_download_logs: list[dict[str, Any]] | None = None,
+        username: str = "",
+        file_path: str = "",
+    ) -> bool:
         total_bytes = self._extract_total_bytes(connection, logs) or 0
 
         has_download_signal = False
@@ -684,8 +782,249 @@ class SFTPGoSyncService:
         if max_segment_bytes >= _MIN_SEGMENT_BYTES_FOR_PLAYBACK:
             return True
 
-        # Active connection that has already sent ≥ 10 MB is also real.
-        return total_bytes >= _MIN_MEANINGFUL_TRANSFER_BYTES
+        # Active connection that has already sent ≥ 50 MB is also real.
+        # 50 MB matches _MIN_SEGMENT_BYTES_FOR_PLAYBACK so browse pre-buffers
+        # (Infuse scans ~10-26 MB per file) are excluded from both paths.
+        if total_bytes >= _MIN_MEANINGFUL_TRANSFER_BYTES:
+            return True
+
+        # NAT-timeout reconnection pattern: the user's router drops idle TCP connections
+        # every ~120 s (common default), so Infuse reconnects repeatedly.  Each individual
+        # FTP segment is small (< 50 MB) but the cumulative total across all reconnects
+        # within the last 30 minutes confirms real playback.
+        if all_download_logs and username and file_path:
+            cumulative = self._sum_log_bytes_for_file(username, file_path, all_download_logs)
+            if cumulative >= _MIN_MEANINGFUL_TRANSFER_BYTES:
+                logger.debug(
+                    "SFTPGo NAT-reconnect detected for %s / %s — cumulative %.1f MB across segments",
+                    username,
+                    file_path,
+                    cumulative / 1_000_000,
+                )
+                return True
+
+        return False
+
+    # ------------------------------------------------------------------
+    # Log-only session creation (offline parallel downloads)
+    # ------------------------------------------------------------------
+
+    def _import_completed_log_sessions(
+        self,
+        download_logs: list[dict[str, Any]],
+    ) -> int:
+        """Create ENDED history entries for downloads that completed entirely
+        between two consecutive polls — no active connection was ever seen.
+
+        Typical scenario: a user (e.g. Antonio) uses Infuse to download content
+        offline during the night.  Multiple parallel FTP connections each transfer
+        at full network speed and finish in seconds.  StreamFuse never sees an
+        active connection, so the normal detection path misses them.
+
+        Groups completed Download log entries by (username, file_path) within the
+        30-minute aggregation window.  When the cumulative size_bytes ≥ 50 MB and
+        the group either has ≥ 5 completed segments or ≥ 60 s of cumulative
+        transfer time (to exclude brief Infuse probe bursts), a new ENDED session
+        is written directly to history.
+        """
+        now = datetime.now(UTC)
+        cutoff_ts = now.timestamp() - _RECONNECT_AGGREGATE_WINDOW_SECONDS
+
+        # Build groups: (username_lower, ftp_path_lower) → [log entries]
+        raw_groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+        for log in download_logs:
+            username = str(log.get("username") or "").strip()
+            ftp_path = str(log.get("file_path") or log.get("path") or "").strip()
+            if not username or not ftp_path:
+                continue
+            if not self._looks_like_media_file(ftp_path):
+                continue
+
+            ts_raw = log.get("ts") or log.get("timestamp") or log.get("time")
+            if ts_raw is not None:
+                try:
+                    ts = float(ts_raw)
+                    if ts > 1e10:
+                        ts /= 1000.0
+                    if ts < cutoff_ts:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+
+            raw_groups[(username.lower(), ftp_path.lower())].append(log)
+
+        created = 0
+
+        for (norm_user, _), logs in raw_groups.items():
+            # --- byte threshold -----------------------------------------
+            total_bytes = sum(_to_int(log.get("size_bytes")) or 0 for log in logs)
+            if total_bytes < _MIN_MEANINGFUL_TRANSFER_BYTES:
+                continue
+
+            # --- probe filter -------------------------------------------
+            # Real downloads/streams either produce many RETR operations or
+            # take a long time.  Infuse probes generate 2-5 quick segments.
+            total_elapsed_ms = sum(_to_int(log.get("elapsed_ms")) or 0 for log in logs)
+            if len(logs) < _LOG_ONLY_MIN_SEGMENTS and total_elapsed_ms < _LOG_ONLY_MIN_ELAPSED_MS:
+                continue
+
+            # --- resolve original-case values ----------------------------
+            username = str(logs[0].get("username") or "").strip()
+            ftp_path = str(logs[0].get("file_path") or logs[0].get("path") or "").strip()
+
+            local_path = self._normalize_media_path_for_local_fs(ftp_path)
+            if not local_path or not self._looks_like_media_file(local_path):
+                continue
+
+            # --- skip if an active session already tracks this -----------
+            norm_local = local_path.strip().lower()
+            has_active = any(
+                k.startswith(f"{norm_user}|") and k.endswith(f"|{norm_local}")
+                for k in self._active_session_ids_by_key
+            )
+            if has_active:
+                continue
+
+            # --- skip if a recent ENDED session already exists -----------
+            existing = self.session_service.repository.find_recent_ended_by_user_and_file(
+                source=StreamSource.SFTPGO,
+                user_name=username,
+                file_path=local_path,
+                within_seconds=_RECONNECT_AGGREGATE_WINDOW_SECONDS,
+            )
+            if existing:
+                continue
+
+            # --- derive timestamps from log entries ----------------------
+            ts_values: list[float] = []
+            for log in logs:
+                ts_raw = log.get("ts") or log.get("timestamp") or log.get("time")
+                if ts_raw is not None:
+                    try:
+                        ts = float(ts_raw)
+                        if ts > 1e10:
+                            ts /= 1000.0
+                        ts_values.append(ts)
+                    except (TypeError, ValueError):
+                        pass
+
+            if ts_values:
+                started_at_dt = datetime.fromtimestamp(min(ts_values), tz=UTC)
+                ended_at_dt = datetime.fromtimestamp(max(ts_values), tz=UTC)
+            else:
+                started_at_dt = now
+                ended_at_dt = now
+
+            # --- estimate bandwidth -------------------------------------
+            # For parallel downloads, use wall-clock duration; fall back to
+            # cumulative elapsed (which overstates parallel time) as last resort.
+            wall_seconds = (ended_at_dt - started_at_dt).total_seconds()
+            bandwidth_bps: int | None = None
+            if wall_seconds >= 1:
+                bandwidth_bps = int(total_bytes * 8 / wall_seconds)
+            elif total_elapsed_ms >= 1000:
+                bandwidth_bps = int(total_bytes * 8 / (total_elapsed_ms / 1000))
+
+            # --- extract IP from logs ------------------------------------
+            ip_raw = str(
+                _best_log_field(logs, "ip_address")
+                or _best_log_field(logs, "remote_addr")
+                or _best_log_field(logs, "remote_address")
+                or ""
+            )
+            normalized_ip = self._normalize_ip(ip_raw)
+
+            # --- build connection dict (used by mapper) ------------------
+            connection: dict[str, Any] = {
+                "username": username,
+                "ip_address": normalized_ip,
+                "file_path": local_path,
+                "bytes_sent": total_bytes,
+                "start_time": int(started_at_dt.timestamp()),
+            }
+
+            # Deterministic ID: same user+file+day never creates duplicates
+            day_str = started_at_dt.strftime("%Y%m%d")
+            slug = abs(hash(f"{norm_user}|{norm_local}|{day_str}"))
+            source_session_id = f"sftpgo-log-{slug}"
+
+            try:
+                media_info = parse_mediainfo_for_media(local_path)
+                if bandwidth_bps is None and media_info:
+                    bandwidth_bps = media_info.overall_bitrate_bps or media_info.video_bitrate_bps
+                poster = self.poster_resolver.resolve(local_path, None)
+
+                payload = build_sftpgo_session_payload(
+                    source_session_id=source_session_id,
+                    connection=connection,
+                    related_logs=logs,
+                    status=SessionStatus.ENDED,
+                    bandwidth_bps=bandwidth_bps,
+                    poster_path=str(poster),
+                    media_info=media_info,
+                    ended_at=ended_at_dt,
+                )
+                self.session_service.create_session(payload)
+                logger.debug(
+                    "SFTPGo log-only session created: %s / %s — %.1f MB, %d segments",
+                    username,
+                    local_path,
+                    total_bytes / 1_000_000,
+                    len(logs),
+                )
+                created += 1
+            except Exception:
+                logger.exception(
+                    "Failed to create log-only SFTPGo session for %s / %s",
+                    username,
+                    local_path,
+                )
+
+        return created
+
+    def _sum_log_bytes_for_file(
+        self,
+        username: str,
+        file_path: str,
+        all_logs: list[dict[str, Any]],
+        window_seconds: int = _RECONNECT_AGGREGATE_WINDOW_SECONDS,
+    ) -> int:
+        """Sum *size_bytes* from completed Download log entries matching *username* +
+        *file_path* within the last *window_seconds*.
+
+        Used to detect NAT-timeout reconnection patterns where individual FTP
+        segments are each below *_MIN_MEANINGFUL_TRANSFER_BYTES* but the
+        cumulative total confirms real playback (e.g. a full movie or episode
+        streamed over a connection that resets every 2 minutes).
+        """
+        cutoff_ts = datetime.now(UTC).timestamp() - window_seconds
+        norm_user = username.strip().lower()
+        norm_path = file_path.strip().lower()
+        total = 0
+
+        for log in all_logs:
+            if str(log.get("username") or "").strip().lower() != norm_user:
+                continue
+
+            log_path = str(log.get("file_path") or log.get("path") or "").strip().lower()
+            if norm_path and log_path and log_path != norm_path:
+                continue
+
+            # Time-window guard — skip entries older than the rolling window.
+            ts_raw = log.get("ts") or log.get("timestamp") or log.get("time")
+            if ts_raw is not None:
+                try:
+                    ts = float(ts_raw)
+                    if ts > 1e10:        # milliseconds → seconds
+                        ts /= 1000.0
+                    if ts < cutoff_ts:
+                        continue
+                except (TypeError, ValueError):
+                    pass  # unparseable timestamp → include (safe default)
+
+            total += _to_int(log.get("size_bytes")) or 0
+
+        return total
 
     def _is_download_connection(self, connection: dict[str, Any]) -> bool:
         has_download_signal = False
@@ -709,9 +1048,10 @@ class SFTPGoSyncService:
         file_path = connection.get("file_path") or connection.get("path") or connection.get("current_path")
         bytes_sent = _to_int(connection.get("bytes_sent")) or 0
 
-        # ≥ 10 MB already sent with a media path is a strong signal on its own.
+        # ≥ 50 MB already sent with a media path is a strong signal on its own.
         # No duration gate: FTP clients like Infuse reconnect frequently, resetting
         # connection_time each time, so a fixed elapsed threshold would never be met.
+        # 50 MB threshold also keeps Infuse library-scan pre-buffers (10-26 MB) out.
         if file_path and bytes_sent >= _MIN_MEANINGFUL_TRANSFER_BYTES:
             has_download_signal = True
 
