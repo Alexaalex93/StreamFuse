@@ -58,6 +58,12 @@ _RECONNECT_AGGREGATE_WINDOW_SECONDS = 30 * 60  # 30-minute rolling window
 # completing in under a second each).
 _LOG_ONLY_MIN_SEGMENTS = 5        # at least 5 completed RETR operations, OR …
 _LOG_ONLY_MIN_ELAPSED_MS = 60_000 # … at least 60 s of cumulative transfer time
+# When a NAT reconnect drops and re-establishes an FTP connection, the new
+# connection gets a different connection_id.  We look up the most-recently-
+# ended session for the same user+file and reuse its session ID so that all
+# reconnect segments collapse into a single history row.
+# 2-hour window: generous enough to cover long movies with pauses/buffering.
+_NAT_RECONNECT_MERGE_WINDOW_SECONDS = 2 * 3600
 
 
 class SFTPGoSyncService:
@@ -107,7 +113,11 @@ class SFTPGoSyncService:
         for group in grouped_connections:
             try:
                 key = group["logical_key"]
-                source_session_id = self._resolve_session_id_for_key(key)
+                source_session_id = self._resolve_session_id_for_key(
+                    key,
+                    user_name=group.get("username", ""),
+                    file_path=group.get("file_path", ""),
+                )
                 if not source_session_id:
                     errors += 1
                     continue
@@ -229,6 +239,7 @@ class SFTPGoSyncService:
             if current is None:
                 grouped[logical_key] = {
                     "logical_key": logical_key,
+                    "username": username,
                     "file_path": media_path,
                     "logs": list(related_logs),
                     "connection": self._connection_snapshot(connection, media_path, normalized_ip),
@@ -475,11 +486,38 @@ class SFTPGoSyncService:
             self._active_session_ids_by_key[logical_key] = row.source_session_id
             self._key_by_session_id[row.source_session_id] = logical_key
 
-    def _resolve_session_id_for_key(self, logical_key: str) -> str:
+    def _resolve_session_id_for_key(
+        self,
+        logical_key: str,
+        user_name: str = "",
+        file_path: str = "",
+    ) -> str:
+        # 1. Already in active cache — reuse.
         existing = self._active_session_ids_by_key.get(logical_key)
         if existing:
             return existing
 
+        # 2. Look for a recently-ended session for the same user+file so that
+        #    NAT-reconnect segments (each with a new connection_id) collapse
+        #    into the same history row rather than creating duplicates.
+        if user_name and file_path:
+            recent = self.session_service.repository.find_recent_ended_by_user_and_file(
+                source=StreamSource.SFTPGO,
+                user_name=user_name,
+                file_path=file_path,
+                within_seconds=_NAT_RECONNECT_MERGE_WINDOW_SECONDS,
+            )
+            if recent:
+                source_session_id = recent.source_session_id
+                self._active_session_ids_by_key[logical_key] = source_session_id
+                self._key_by_session_id[source_session_id] = logical_key
+                logger.debug(
+                    "SFTPGo NAT-merge: reusing session %s for %s / %s",
+                    source_session_id, user_name, file_path,
+                )
+                return source_session_id
+
+        # 3. Genuinely new session (first watch, or re-watch days later).
         stamp = int(datetime.now(UTC).timestamp() * 1000)
         slug = abs(hash(logical_key))
         source_session_id = f"sftpgo-{slug}-{stamp}"
