@@ -1,4 +1,4 @@
-﻿services:
+services:
   backend:
     build:
       context: .
@@ -12,12 +12,20 @@
       STREAMFUSE_DATABASE_URL: ${STREAMFUSE_DATABASE_URL_PROD:-postgresql+psycopg://streamfuse:streamfuse@db:5432/streamfuse}
       STREAMFUSE_AUTO_SEED_MOCK: ${STREAMFUSE_AUTO_SEED_MOCK_PROD:-false}
       STREAMFUSE_UVICORN_WORKERS: ${STREAMFUSE_UVICORN_WORKERS:-2}
+      # Path inside the container where samba-status.json is read.
+      # Matches the /host-shared bind mount below so the Unraid smbstatus
+      # poller can write directly to the host path without knowing the
+      # Docker named-volume location.
+      STREAMFUSE_SAMBA_STATUS_JSON_PATH: /host-shared/samba-status.json
     ports:
       - "8000:8000"
     labels:
       - "net.unraid.docker.icon=https://raw.githubusercontent.com/Alexaalex93/StreamFuse/main/frontend/public/favicon.svg"
     volumes:
       - streamfuse_data:/data
+      # Host-shared directory: the Unraid smbstatus poller writes
+      # samba-status.json here; the container reads it at /host-shared/.
+      - /mnt/user/appdata/streamfuse/host-shared:/host-shared
     restart: unless-stopped
     depends_on:
       db:
