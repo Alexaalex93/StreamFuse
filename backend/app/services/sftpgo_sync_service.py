@@ -113,10 +113,18 @@ class SFTPGoSyncService:
         for group in grouped_connections:
             try:
                 key = group["logical_key"]
+
+                # Normalize the path FIRST — the DB stores the normalized local
+                # path, so _resolve_session_id_for_key must query with the same
+                # value for find_recent_ended_by_user_and_file to ever match.
+                media_path = self._normalize_media_path_for_local_fs(group["file_path"])
+                if not media_path or not self._looks_like_media_file(media_path):
+                    continue
+
                 source_session_id = self._resolve_session_id_for_key(
                     key,
                     user_name=group.get("username", ""),
-                    file_path=group.get("file_path", ""),
+                    file_path=media_path,  # normalized — matches what's in DB
                 )
                 if not source_session_id:
                     errors += 1
@@ -125,10 +133,6 @@ class SFTPGoSyncService:
                 seen_ids.add(source_session_id)
                 connection = dict(group["connection"])
                 related_logs = group["logs"]
-
-                media_path = self._normalize_media_path_for_local_fs(group["file_path"])
-                if not media_path or not self._looks_like_media_file(media_path):
-                    continue
 
                 connection["file_path"] = media_path
                 connection["streamfuse_logical_key"] = key
