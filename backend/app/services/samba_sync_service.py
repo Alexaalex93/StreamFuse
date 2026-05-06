@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select as sa_select
+
 from app.adapters.samba.client import SambaClient
 from app.api.v1.schemas.sessions import UnifiedStreamSessionCreate
 from app.domain.enums import SessionStatus, StreamSource
@@ -20,6 +22,13 @@ from app.services.session_service import SessionService
 # creating a new history entry.  Sessions ended longer ago are treated as a
 # fresh re-watch and will produce a separate history entry.
 _SAME_SESSION_MERGE_WINDOW_SECONDS = 3600  # 1 hour
+
+# Samba library scanners (Infuse, Kodi, Emby…) open media files to read
+# metadata / thumbnails.  These can stay open for 20-60 s and be seen across
+# 2+ consecutive polls, passing both the consecutive-polls and open-age guards.
+# Any ENDED Samba session whose duration is shorter than this threshold is
+# treated as a scan artefact and silently deleted from history.
+_MIN_SAMBA_SESSION_DURATION_SECONDS = 120  # 2 minutes
 
 _MEDIA_FILE_EXTENSIONS = {
     ".mkv",
@@ -200,14 +209,16 @@ class SambaSyncService:
                 errors += 1
 
         stale_marked = self._mark_stale_sessions(seen_ids)
+        cleaned_history_noise = self._purge_invalid_history_noise()
         self._rebuild_active_session_cache()
 
         return {
             "active_imported": imported,
             "cleaned_duplicate_active": cleaned_duplicate_active,
             "stale_marked": stale_marked,
+            "cleaned_history_noise": cleaned_history_noise,
             "errors": errors,
-            "total_processed": imported + cleaned_duplicate_active + stale_marked,
+            "total_processed": imported + cleaned_duplicate_active + stale_marked + cleaned_history_noise,
         }
 
     def _group_download_connections(self, connections: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -411,6 +422,42 @@ class SambaSyncService:
             self.session_service.repository.db.commit()
 
         return stale_count
+
+    def _purge_invalid_history_noise(self) -> int:
+        """Delete ENDED Samba sessions that are too short to be real watches.
+
+        Samba library scanners (Infuse, Kodi, Emby…) open media files for
+        metadata / thumbnail reads.  These can stay open for 20-60 s across
+        multiple polls and pass both the consecutive-poll and minimum-age guards,
+        creating spurious history entries for files the user never actually watched.
+
+        Any ENDED session whose wall-clock duration is shorter than
+        _MIN_SAMBA_SESSION_DURATION_SECONDS is silently deleted.
+        Sessions with no timestamps are kept (unknown duration → safe).
+        """
+        rows = list(
+            self.session_service.repository.db.scalars(
+                sa_select(UnifiedStreamSessionModel).where(
+                    UnifiedStreamSessionModel.source == StreamSource.SAMBA,
+                    UnifiedStreamSessionModel.status != SessionStatus.ACTIVE,
+                )
+            ).all()
+        )
+        removed = 0
+        for row in rows:
+            started = _to_datetime(row.started_at)
+            ended = _to_datetime(row.ended_at) or _to_datetime(row.updated_at)
+            if started is None or ended is None:
+                continue  # no timestamps → keep
+            duration_s = (ended - started).total_seconds()
+            if duration_s < _MIN_SAMBA_SESSION_DURATION_SECONDS:
+                self.session_service.repository.db.delete(row)
+                removed += 1
+
+        if removed:
+            self.session_service.repository.db.commit()
+
+        return removed
 
     def _normalize_media_path_for_local_fs(self, media_path: str | None) -> str | None:
         if not media_path:
