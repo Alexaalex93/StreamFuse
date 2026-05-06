@@ -139,8 +139,13 @@ def trim_transfer_log_file(
         # --- size filter ---------------------------------------------------
         # Drop tiny probe/thumbnail entries when min_size_bytes is set.
         # Entries with no size field are kept (could be non-transfer events).
+        # Only check ``size_bytes`` — the per-transfer byte count written by
+        # SFTPGo for each completed RETR/STOR.  ``bytes_sent`` is a cumulative
+        # *connection* counter (total bytes since the connection opened) and
+        # would incorrectly keep small-file entries that happened on a
+        # high-traffic connection.  ``size`` is ambiguous across log formats.
         if min_size_bytes > 0:
-            size_raw = data.get("size_bytes") or data.get("bytes_sent") or data.get("size")
+            size_raw = data.get("size_bytes")
             if size_raw is not None:
                 try:
                     if int(float(size_raw)) < min_size_bytes:

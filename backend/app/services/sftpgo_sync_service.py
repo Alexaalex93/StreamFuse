@@ -324,6 +324,7 @@ class SFTPGoSyncService:
     def _cleanup_invalid_active_sessions(self, active_ids: set[str]) -> int:
         rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
         pruned = 0
+        now = datetime.now(UTC)
 
         for row in rows:
             if row.source_session_id in active_ids:
@@ -333,7 +334,21 @@ class SFTPGoSyncService:
             if file_path and self._looks_like_media_file(file_path):
                 continue
 
-            self.session_service.repository.db.delete(row)
+            if not file_path:
+                # No file path yet (connection just established, path not yet
+                # resolved).  Mark ENDED rather than hard-deleting so the session
+                # leaves a trace; _purge_invalid_history_noise will remove it on
+                # the same or next poll.
+                raw = row.raw_payload if isinstance(row.raw_payload, dict) else {}
+                raw["lifecycle"] = "cleanup_no_filepath"
+                row.status = SessionStatus.ENDED
+                row.ended_at = now
+                row.raw_payload = raw
+            else:
+                # Non-media file path (metadata probe, thumbnail fetch).
+                # Silently delete — not meaningful for history.
+                self.session_service.repository.db.delete(row)
+
             self._drop_session_from_caches(row.source_session_id)
             pruned += 1
 
@@ -398,7 +413,8 @@ class SFTPGoSyncService:
         stale_threshold = now - timedelta(seconds=self.stale_seconds)
 
         rows = self.session_service.repository.list_active_by_source(StreamSource.SFTPGO)
-        stale_count = 0
+        stale_ended = 0
+        stale_deleted = 0
 
         for row in rows:
             if row.source_session_id in active_ids:
@@ -410,11 +426,28 @@ class SFTPGoSyncService:
             if updated_at > stale_threshold:
                 continue
 
+            started_at = _as_utc(row.started_at)
+            if started_at is None:
+                # Cannot determine session age (pre-v0.3.7 row or null started_at).
+                # Mark ENDED rather than deleting to preserve the history entry
+                # instead of silently discarding it.
+                logger.debug(
+                    "SFTPGo session %s has no started_at — marking ENDED without age check",
+                    row.source_session_id,
+                )
+                payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
+                payload["lifecycle"] = "stale"
+                row.status = SessionStatus.ENDED
+                row.ended_at = now
+                row.raw_payload = payload
+                self._drop_session_from_caches(row.source_session_id)
+                stale_ended += 1
+                continue
+
             # Sessions that existed for less than _MIN_SESSION_DURATION_SECONDS are
             # almost certainly Infuse/FTP library-scan pre-buffers, not real watches.
             # Browsing a media library opens a file, downloads ~10-26 MB and disconnects
             # within seconds.  Delete these silently instead of surfacing them in history.
-            started_at = _as_utc(row.started_at) or updated_at
             session_age_seconds = (updated_at - started_at).total_seconds()
             if session_age_seconds < _MIN_SESSION_DURATION_SECONDS:
                 logger.debug(
@@ -424,7 +457,7 @@ class SFTPGoSyncService:
                 )
                 self.session_service.repository.db.delete(row)
                 self._drop_session_from_caches(row.source_session_id)
-                stale_count += 1
+                stale_deleted += 1
                 continue
 
             payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}
@@ -433,10 +466,16 @@ class SFTPGoSyncService:
             row.ended_at = now
             row.raw_payload = payload
             self._drop_session_from_caches(row.source_session_id)
-            stale_count += 1
+            stale_ended += 1
 
+        stale_count = stale_ended + stale_deleted
         if stale_count:
             self.session_service.repository.db.commit()
+            logger.debug(
+                "SFTPGo stale sessions: %d marked ENDED, %d deleted (noise suppression)",
+                stale_ended,
+                stale_deleted,
+            )
 
         return stale_count
 
@@ -511,7 +550,10 @@ class SFTPGoSyncService:
                 file_path=file_path,
                 within_seconds=_NAT_RECONNECT_MERGE_WINDOW_SECONDS,
             )
-            if recent:
+            # Never merge into a log-only session (sftpgo-log-*): those are
+            # created as ENDED from the start (parallel offline downloads) and
+            # re-opening them as ACTIVE would corrupt the completed transfer record.
+            if recent and not str(recent.source_session_id or "").startswith("sftpgo-log-"):
                 source_session_id = recent.source_session_id
                 self._active_session_ids_by_key[logical_key] = source_session_id
                 self._key_by_session_id[source_session_id] = logical_key
@@ -530,6 +572,11 @@ class SFTPGoSyncService:
         return source_session_id
 
     def _drop_session_from_caches(self, source_session_id: str) -> None:
+        # Remove bandwidth sample so a stale byte-count from the previous
+        # connection doesn't produce a negative or inflated delta on the first
+        # reading of the next session that reuses the same logical key.
+        self._last_sample.pop(source_session_id, None)
+
         logical_key = self._key_by_session_id.pop(source_session_id, None)
         if not logical_key:
             return
@@ -910,9 +957,18 @@ class SFTPGoSyncService:
             if len(logs) < _LOG_ONLY_MIN_SEGMENTS and total_elapsed_ms < _LOG_ONLY_MIN_ELAPSED_MS:
                 continue
 
-            # --- resolve original-case values ----------------------------
-            username = str(logs[0].get("username") or "").strip()
-            ftp_path = str(logs[0].get("file_path") or logs[0].get("path") or "").strip()
+            # --- resolve canonical values from the most-recent log entry --------
+            # Groups are keyed by (username_lower, path_lower) so logs may contain
+            # entries with mixed casing.  Pick the most-recently-timestamped entry
+            # as the canonical source to get stable display values; fall back to
+            # norm_user for username so the key is always consistent.
+            canonical = max(
+                logs,
+                key=lambda lg: float(lg.get("ts") or lg.get("timestamp") or lg.get("time") or 0),
+                default=logs[0],
+            )
+            username = str(canonical.get("username") or "").strip() or norm_user
+            ftp_path = str(canonical.get("file_path") or canonical.get("path") or "").strip()
 
             local_path = self._normalize_media_path_for_local_fs(ftp_path)
             if not local_path or not self._looks_like_media_file(local_path):

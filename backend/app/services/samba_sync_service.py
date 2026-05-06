@@ -386,8 +386,11 @@ class SambaSyncService:
             if row.source_session_id in active_ids:
                 continue
 
-            updated_at = _to_datetime(row.updated_at)
-            if updated_at and updated_at > stale_threshold:
+            # Default to *now* when updated_at is None so a freshly-created row
+            # (DB timestamp not yet readable inside the current transaction) is
+            # never immediately marked stale.  Mirrors the SFTPGo service approach.
+            updated_at = _to_datetime(row.updated_at) or now
+            if updated_at > stale_threshold:
                 continue
 
             payload = row.raw_payload if isinstance(row.raw_payload, dict) else {}

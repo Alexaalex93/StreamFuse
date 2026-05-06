@@ -217,7 +217,10 @@ class UnifiedStreamSessionRepository:
                 UnifiedStreamSessionModel.ended_at.is_not(None),
                 UnifiedStreamSessionModel.ended_at >= cutoff,
                 func.lower(UnifiedStreamSessionModel.user_name) == user_name.strip().lower(),
-                UnifiedStreamSessionModel.file_path == file_path,
+                # Case-insensitive match — path normalisation across reconnects
+                # can produce minor casing differences (e.g. drive root vs
+                # sub-directory components on case-preserving filesystems).
+                func.lower(UnifiedStreamSessionModel.file_path) == file_path.strip().lower(),
             )
             .order_by(UnifiedStreamSessionModel.ended_at.desc())
             .limit(1)
