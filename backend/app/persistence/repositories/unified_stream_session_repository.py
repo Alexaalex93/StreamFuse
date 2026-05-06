@@ -155,6 +155,16 @@ class UnifiedStreamSessionRepository:
 
         if existing:
             for key, value in payload.model_dump().items():
+                # Never overwrite started_at once it is set — it records when
+                # the viewing *session* began, not when the latest network
+                # connection was established.  FTP/Samba clients reconnect
+                # frequently (NAT timeouts, brief pauses) and each new
+                # connection carries its own start_time.  Overwriting would
+                # reset started_at to the most-recent reconnect, making
+                # session_age_seconds ≈ 0 and causing _mark_stale_sessions
+                # to delete the row instead of marking it ENDED.
+                if key == "started_at" and existing.started_at is not None:
+                    continue
                 setattr(existing, key, value)
             self.db.commit()
             self.db.refresh(existing)
